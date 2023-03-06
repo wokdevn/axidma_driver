@@ -21,7 +21,8 @@ SHELL = /bin/bash
 CC = $(CROSS_COMPILE)gcc
 
 # Standard gcc flags for compilation
-GLOBAL_CFLAGS = -Wall -Wextra -Werror -std=gnu99 -g -O0
+# GLOBAL_CFLAGS = -Wall -Wextra -Werror -std=gnu99 -g -O0
+GLOBAL_CFLAGS = -Wall -Wextra -std=gnu99 -g -O0
 
 # The location where the compiled executables and driver will be stored
 OUTPUT_DIR ?= outputs

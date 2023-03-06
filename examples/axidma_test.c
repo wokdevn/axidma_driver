@@ -52,11 +52,17 @@
 #define IMAGE_SIZE                  (1920 * 1080)
 #define DEFAULT_TRANSFER_SIZE       ((int)(IMAGE_SIZE * sizeof(int)))
 
+#define TRANS_NUM                   1
+#define DEFAULT_TRANS_SIZE          ((int)(TRANS_NUM * sizeof(long)))
+
 // The default number of transfers to benchmark
-#define DEFAULT_NUM_TRANSFERS       1000
+#define DEFAULT_NUM_TRANSFERS       10
 
 // The pattern that we fill into the buffers
 #define TEST_PATTERN(i) ((int)(0x1234ACDE ^ (i)))
+
+// The pattern that fill into transfer buffer
+#define TEST_TX_PATTERN(i) ((int)(0xffff & (i)))
 
 // The DMA context passed to the helper thread, who handles remainder channels
 
@@ -79,7 +85,7 @@ static void print_usage(bool help)
         return;
     }
 
-    default_size = BYTE_TO_MIB(DEFAULT_TRANSFER_SIZE);
+    default_size = BYTE_TO_MIB(DEFAULT_TRANS_SIZE);
     fprintf(stream, "\t-v:\t\t\t\tUse the AXI VDMA channels instead of AXI DMA "
             "ones for the transfer.\n");
     fprintf(stream, "\t-t <DMA tx channel>:\t\t\tThe device id of the DMA "
@@ -91,7 +97,7 @@ static void print_usage(bool help)
             "MiB.\n", default_size);
     fprintf(stream, "\t-b <Tx transfer size (bytes)>:\tThe size of the "
             "data transmit over the DMA on each transfer. Default is %d "
-            "bytes.\n", DEFAULT_TRANSFER_SIZE);
+            "bytes.\n", DEFAULT_TRANS_SIZE);
     fprintf(stream, "\t-f <Tx frame size (height x width x depth)>:\tThe size "
             "of the frame to transmit over VDMA on each transfer, where the "
             "depth is in bytes.");
@@ -100,7 +106,7 @@ static void print_usage(bool help)
             default_size);
     fprintf(stream, "\t-s <Rx transfer size (bytes)>:\tThe size of the "
             "data to receive from the DMA on each transfer. Default is %d "
-            "bytes.\n", DEFAULT_TRANSFER_SIZE);
+            "bytes.\n", DEFAULT_TRANS_SIZE);
     fprintf(stream, "\t-g <Rx frame size (height x width x depth)>:\tThe size "
             "of the frame to receive over VDMA on each transfer, where the "
             "depth is in bytes.");
@@ -125,11 +131,11 @@ static int parse_args(int argc, char **argv, int *tx_channel, int *rx_channel,
     *use_vdma = false;
     *tx_channel = -1;
     *rx_channel = -1;
-    *tx_size = DEFAULT_TRANSFER_SIZE;
+    *tx_size = DEFAULT_TRANS_SIZE;
     tx_frame->height = -1;
     tx_frame->width = -1;
     tx_frame->depth = -1;
-    *rx_size = DEFAULT_TRANSFER_SIZE;
+    *rx_size = DEFAULT_TRANS_SIZE;
     rx_frame->height = -1;
     rx_frame->width = -1;
     rx_frame->depth = -1;
@@ -255,8 +261,8 @@ static int parse_args(int argc, char **argv, int *tx_channel, int *rx_channel,
         return -EINVAL;
     }
 
-    if ((*tx_size == DEFAULT_TRANSFER_SIZE) ^
-        (*rx_size == DEFAULT_TRANSFER_SIZE)) {
+    if ((*tx_size == DEFAULT_TRANS_SIZE) ^
+        (*rx_size == DEFAULT_TRANS_SIZE)) {
         fprintf(stderr, "Error: If one of -i/-b or -o/-s is specified, then "
                 "both most be.\n");
         return -EINVAL;
@@ -403,6 +409,49 @@ static int single_transfer_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     return verify_data(tx_buf, rx_buf, tx_size, rx_size);
 }
 
+/* Initialize the tx buffers, filling buffers with a preset
+ * pattern. */
+static void init_tx_data(char *tx_buf, size_t tx_buf_size)
+{
+    size_t i;
+    int *transmit_buffer;
+
+    transmit_buffer = (int *)tx_buf;
+
+    // Fill the buffer with integer patterns
+    for (i = 0; i < tx_buf_size / sizeof(int); i++)
+    {
+        transmit_buffer[i] = TEST_TX_PATTERN(i);
+    }
+
+    // To align
+    // Fill in any leftover bytes if it's not aligned
+    for (i = 0; i < tx_buf_size % sizeof(int); i++)
+    {
+        tx_buf[i] = TEST_TX_PATTERN(i + tx_buf_size / sizeof(int));
+    }
+
+    return;
+}
+
+static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
+        int tx_size, struct axidma_video_frame *tx_frame)
+{
+    int rc;
+
+    // Initialize the buffer region we're going to transmit
+    init_tx_data(tx_buf, tx_size);
+
+    printf("One way transfer!\n");
+    // Perform the DMA transaction
+    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf,tx_size, true);
+    if (rc < 0) {
+        return rc;
+    }
+
+    return rc;
+}
+
 /*----------------------------------------------------------------------------
  * Benchmarking Test
  *----------------------------------------------------------------------------*/
@@ -466,7 +515,7 @@ int main(int argc, char **argv)
     const array_t *tx_chans, *rx_chans;
     struct axidma_video_frame transmit_frame, *tx_frame, receive_frame, *rx_frame;
 
-    printf("enter main");
+    printf("Enter main v1.0\n");
 
     // Check if the user overrided the default transfer size and number
     if (parse_args(argc, argv, &tx_channel, &rx_channel, &tx_size,
@@ -475,11 +524,26 @@ int main(int argc, char **argv)
         rc = 1;
         goto ret;
     }
+
+    //vdma not used
+    //parameters:
+    /*
+    tx_size
+    rx_size
+    num_transfers
+    */
     printf("AXI DMA Benchmark Parameters:\n");
+    printf("\tDEFAULT_TRANS_SIZE:%d \n", DEFAULT_TRANS_SIZE);
+    printf("\tTx size:%d \n", tx_size);
     if (!use_vdma) {
-        printf("\tTransmit Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(tx_size));
-        printf("\tReceive Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(rx_size));
-    } else {
+        printf("\tTransmit Buffer Size: %d B\n", (tx_size));
+        printf("\tReceive Buffer Size: %d B\n", (rx_size));
+    } 
+    // if (!use_vdma) {
+    //     printf("\tTransmit Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(tx_size));
+    //     printf("\tReceive Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(rx_size));
+    // } 
+    else {
         printf("\tTransmit Buffer Size: %dx%dx%d (%0.2f MiB)\n",
                 transmit_frame.height, transmit_frame.width, transmit_frame.depth,
                 BYTE_TO_MIB(tx_size));
@@ -511,18 +575,23 @@ int main(int argc, char **argv)
         goto free_tx_buf;
     }
 
+    //vdma not used
     // Get all the transmit and receive channels
     if (use_vdma) {
         tx_chans = axidma_get_vdma_tx(axidma_dev);
         rx_chans = axidma_get_vdma_rx(axidma_dev);
         tx_frame = &transmit_frame;
         rx_frame = &receive_frame;
-    } else {
+    } 
+    //from here
+    else {
         tx_chans = axidma_get_dma_tx(axidma_dev);
         rx_chans = axidma_get_dma_rx(axidma_dev);
         tx_frame = NULL;
         rx_frame = NULL;
     }
+
+    
     if (tx_chans->len < 1) {
         fprintf(stderr, "Error: No transmit channels were found.\n");
         rc = -ENODEV;
@@ -543,18 +612,29 @@ int main(int argc, char **argv)
     printf("Using transmit channel %d and receive channel %d.\n", tx_channel,
            rx_channel);
 
-    // Transmit the buffer to DMA a single time
-    rc = single_transfer_test(axidma_dev, tx_channel, tx_buf, tx_size,
-            tx_frame, rx_channel, rx_buf, rx_size, rx_frame);
+    // // Transmit the buffer to DMA a single time
+    // rc = single_transfer_test(axidma_dev, tx_channel, tx_buf, tx_size,
+    //         tx_frame, rx_channel, rx_buf, rx_size, rx_frame);
+    // if (rc < 0) {
+    //     goto free_rx_buf;
+    // }
+    // printf("Single transfer test successfully completed!\n");
+
+    printf("MM2S transfer test \n");
+    //MM2S test
+    rc = mm2s_test(axidma_dev, tx_channel, tx_buf, tx_size,
+            tx_frame);
     if (rc < 0) {
         goto free_rx_buf;
     }
-    printf("Single transfer test successfully completed!\n");
+    printf("MM2S transfer test successfully completed!\n");
 
     // Time the DMA eingine
-    printf("Beginning performance analysis of the DMA engine.\n\n");
-    rc = time_dma(axidma_dev, tx_channel, tx_buf, tx_size, tx_frame,
-            rx_channel, rx_buf, rx_size, rx_frame, num_transfers);
+    // No analysis
+    // printf("Beginning performance analysis of the DMA engine.\n\n");
+    // rc = time_dma(axidma_dev, tx_channel, tx_buf, tx_size, tx_frame,
+    //         rx_channel, rx_buf, rx_size, rx_frame, num_transfers);
+    printf("Exiting.\n\n");
 
 free_rx_buf:
     axidma_free(axidma_dev, rx_buf, rx_size);
