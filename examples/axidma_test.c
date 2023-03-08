@@ -28,41 +28,43 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <string.h>             // Strlen function
+#include <string.h> // Strlen function
 
-#include <fcntl.h>              // Flags for open()
-#include <sys/stat.h>           // Open() system call
-#include <sys/types.h>          // Types for open()
-#include <sys/mman.h>           // Mmap system call
-#include <sys/ioctl.h>          // IOCTL system call
-#include <unistd.h>             // Close() system call
-#include <sys/time.h>           // Timing functions and definitions
-#include <getopt.h>             // Option parsing
-#include <errno.h>              // Error codes
+#include <fcntl.h>     // Flags for open()
+#include <sys/stat.h>  // Open() system call
+#include <sys/types.h> // Types for open()
+#include <sys/mman.h>  // Mmap system call
+#include <sys/ioctl.h> // IOCTL system call
+#include <unistd.h>    // Close() system call
+#include <sys/time.h>  // Timing functions and definitions
+#include <getopt.h>    // Option parsing
+#include <errno.h>     // Error codes
 
-#include "libaxidma.h"          // Interface to the AXI DMA
-#include "util.h"               // Miscellaneous utilities
-#include "conversion.h"         // Miscellaneous conversion utilities
+#include "libaxidma.h"  // Interface to the AXI DMA
+#include "util.h"       // Miscellaneous utilities
+#include "conversion.h" // Miscellaneous conversion utilities
+
+#include "udpclient.h"
 
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
 
 // The size of data to send per transfer (1080p image, 7.24 MiB)
-#define IMAGE_SIZE                  (1920 * 1080)
-#define DEFAULT_TRANSFER_SIZE       ((int)(IMAGE_SIZE * sizeof(int)))
+#define IMAGE_SIZE (1920 * 1080)
+#define DEFAULT_TRANSFER_SIZE ((int)(IMAGE_SIZE * sizeof(int)))
 
-#define TRANS_NUM                   1
-#define DEFAULT_TRANS_SIZE          ((int)(TRANS_NUM * sizeof(long)))
+#define TRANS_NUM 65600
+#define DEFAULT_TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
 // The default number of transfers to benchmark
-#define DEFAULT_NUM_TRANSFERS       10
+#define DEFAULT_NUM_TRANSFERS 1
 
 // The pattern that we fill into the buffers
 #define TEST_PATTERN(i) ((int)(0x1234ACDE ^ (i)))
 
 // The pattern that fill into transfer buffer
-#define TEST_TX_PATTERN(i) ((int)(0xffff & (i)))
+#define TEST_TX_PATTERN(i) ((u_long)(0xffffffffffffffff & (i)))
 
 // The DMA context passed to the helper thread, who handles remainder channels
 
@@ -73,45 +75,49 @@
 // Prints the usage for this program
 static void print_usage(bool help)
 {
-    FILE* stream = (help) ? stdout : stderr;
+    FILE *stream = (help) ? stdout : stderr;
     double default_size;
 
     fprintf(stream, "Usage: axidma_benchmark [-v] [-t <(V)DMA tx channel>] "
-            "[-r <(V)DMA rx channel>] [-i <Tx transfer size (MiB)>] "
-            "[-b <Tx transfer size (bytes)>] [-f <Tx frame size (HxWxD)>] "
-            "[-o <Rx transfer size (MiB)>] [-s <Rx transfer size (bytes)>] "
-            "[-g <Rx frame size (HxWxD)>] [-n <number transfers>]\n");
-    if (!help) {
+                    "[-r <(V)DMA rx channel>] [-i <Tx transfer size (MiB)>] "
+                    "[-b <Tx transfer size (bytes)>] [-f <Tx frame size (HxWxD)>] "
+                    "[-o <Rx transfer size (MiB)>] [-s <Rx transfer size (bytes)>] "
+                    "[-g <Rx frame size (HxWxD)>] [-n <number transfers>]\n");
+    if (!help)
+    {
         return;
     }
 
     default_size = BYTE_TO_MIB(DEFAULT_TRANS_SIZE);
     fprintf(stream, "\t-v:\t\t\t\tUse the AXI VDMA channels instead of AXI DMA "
-            "ones for the transfer.\n");
+                    "ones for the transfer.\n");
     fprintf(stream, "\t-t <DMA tx channel>:\t\t\tThe device id of the DMA "
-            "channel to use for transmitting the data to the PL fabric.\n");
+                    "channel to use for transmitting the data to the PL fabric.\n");
     fprintf(stream, "\t-r <DMA rx channel>:\t\t\tThe device id of the DMA "
-            "channel to use for receiving the the data from the PL fabric.\n");
+                    "channel to use for receiving the the data from the PL fabric.\n");
     fprintf(stream, "\t-i <transmit transfer size (MiB)>:\tThe size of the "
-            "data transmit over the DMA on each transfer. Default is %0.2f "
-            "MiB.\n", default_size);
+                    "data transmit over the DMA on each transfer. Default is %0.2f "
+                    "MiB.\n",
+            default_size);
     fprintf(stream, "\t-b <Tx transfer size (bytes)>:\tThe size of the "
-            "data transmit over the DMA on each transfer. Default is %d "
-            "bytes.\n", DEFAULT_TRANS_SIZE);
+                    "data transmit over the DMA on each transfer. Default is %d "
+                    "bytes.\n",
+            DEFAULT_TRANS_SIZE);
     fprintf(stream, "\t-f <Tx frame size (height x width x depth)>:\tThe size "
-            "of the frame to transmit over VDMA on each transfer, where the "
-            "depth is in bytes.");
+                    "of the frame to transmit over VDMA on each transfer, where the "
+                    "depth is in bytes.");
     fprintf(stream, "\t-o <Rx transfer size (MiB)>:\tThe size of the data "
-            "to receive from the DMA on each transfer. Default is %0.2f MiB.\n",
+                    "to receive from the DMA on each transfer. Default is %0.2f MiB.\n",
             default_size);
     fprintf(stream, "\t-s <Rx transfer size (bytes)>:\tThe size of the "
-            "data to receive from the DMA on each transfer. Default is %d "
-            "bytes.\n", DEFAULT_TRANS_SIZE);
+                    "data to receive from the DMA on each transfer. Default is %d "
+                    "bytes.\n",
+            DEFAULT_TRANS_SIZE);
     fprintf(stream, "\t-g <Rx frame size (height x width x depth)>:\tThe size "
-            "of the frame to receive over VDMA on each transfer, where the "
-            "depth is in bytes.");
+                    "of the frame to receive over VDMA on each transfer, where the "
+                    "depth is in bytes.");
     fprintf(stream, "\t-n <number transfers>:\t\t\tThe number of DMA transfers "
-            "to perform to do the benchmark. Default is %d transfers.\n",
+                    "to perform to do the benchmark. Default is %d transfers.\n",
             DEFAULT_NUM_TRANSFERS);
     return;
 }
@@ -119,8 +125,8 @@ static void print_usage(bool help)
 /* Parses the command line arguments overriding the default transfer sizes,
  * and number of transfer to use for the benchmark if specified. */
 static int parse_args(int argc, char **argv, int *tx_channel, int *rx_channel,
-        size_t *tx_size, struct axidma_video_frame *tx_frame, size_t *rx_size,
-        struct axidma_video_frame *rx_frame, int *num_transfers, bool *use_vdma)
+                      size_t *tx_size, struct axidma_video_frame *tx_frame, size_t *rx_size,
+                      struct axidma_video_frame *rx_frame, int *num_transfers, bool *use_vdma)
 {
     double double_arg;
     int int_arg;
@@ -145,132 +151,148 @@ static int parse_args(int argc, char **argv, int *tx_channel, int *rx_channel,
     {
         switch (option)
         {
-            case 'v':
-                *use_vdma = true;
-                break;
+        case 'v':
+            *use_vdma = true;
+            break;
 
-            // Parse the transmit channel argument
-            case 't':
-                if (parse_int(option, optarg, &int_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *tx_channel = int_arg;
-                break;
-
-            // Parse the transmit transfer size argument
-            case 'r':
-                if (parse_int(option, optarg, &int_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *rx_channel = int_arg;
-                break;
-
-            // Parse the transmit transfer size argument
-            case 'i':
-                if (parse_double(option, optarg, &double_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *tx_size = MIB_TO_BYTE(double_arg);
-                break;
-
-            // Parse the transmit transfer size argument
-            case 'b':
-                if (parse_int(option, optarg, &int_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *tx_size = int_arg;
-                break;
-
-            // Parse the transmit frame size option
-            case 'f':
-                if (strlen(optarg) == 0) {
-                    fprintf(stderr, "The -f option requires an argument.\n");
-                    print_usage(false);
-                    return -EINVAL;
-                } else if (parse_resolution(option, optarg, &tx_frame->height,
-                        &tx_frame->width, &tx_frame->depth) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *tx_size = tx_frame->height * tx_frame->width * tx_frame->depth;
-                tx_frame_specified = true;
-
-                break;
-
-            // Parse the receive transfer size argument
-            case 'o':
-                if (parse_double(option, optarg, &double_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *rx_size = MIB_TO_BYTE(double_arg);
-                break;
-
-            // Parse the receive transfer size argument
-            case 's':
-                if (parse_int(option, optarg, &int_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *rx_size = int_arg;
-                break;
-
-            // Parse the receive frame size option
-            case 'g':
-                if (strlen(optarg) == 0) {
-                    fprintf(stderr, "The -g option requires an argument.\n");
-                    print_usage(false);
-                    return -EINVAL;
-                } else if (parse_resolution(option, optarg, &rx_frame->height,
-                        &rx_frame->width, &rx_frame->depth) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *rx_size = rx_frame->height * rx_frame->width * rx_frame->depth;
-                rx_frame_specified = true;
-
-                break;
-
-            // Parse the number of transfers argument
-            case 'n':
-                if (parse_int(option, optarg, &int_arg) < 0) {
-                    print_usage(false);
-                    return -EINVAL;
-                }
-                *num_transfers = int_arg;
-                break;
-
-            // Print detailed usage message
-            case 'h':
-                print_usage(true);
-                exit(0);
-
-            default:
+        // Parse the transmit channel argument
+        case 't':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
                 print_usage(false);
                 return -EINVAL;
+            }
+            *tx_channel = int_arg;
+            break;
+
+        // Parse the transmit transfer size argument
+        case 'r':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *rx_channel = int_arg;
+            break;
+
+        // Parse the transmit transfer size argument
+        case 'i':
+            if (parse_double(option, optarg, &double_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *tx_size = MIB_TO_BYTE(double_arg);
+            break;
+
+        // Parse the transmit transfer size argument
+        case 'b':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *tx_size = int_arg;
+            break;
+
+        // Parse the transmit frame size option
+        case 'f':
+            if (strlen(optarg) == 0)
+            {
+                fprintf(stderr, "The -f option requires an argument.\n");
+                print_usage(false);
+                return -EINVAL;
+            }
+            else if (parse_resolution(option, optarg, &tx_frame->height,
+                                      &tx_frame->width, &tx_frame->depth) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *tx_size = tx_frame->height * tx_frame->width * tx_frame->depth;
+            tx_frame_specified = true;
+
+            break;
+
+        // Parse the receive transfer size argument
+        case 'o':
+            if (parse_double(option, optarg, &double_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *rx_size = MIB_TO_BYTE(double_arg);
+            break;
+
+        // Parse the receive transfer size argument
+        case 's':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *rx_size = int_arg;
+            break;
+
+        // Parse the receive frame size option
+        case 'g':
+            if (strlen(optarg) == 0)
+            {
+                fprintf(stderr, "The -g option requires an argument.\n");
+                print_usage(false);
+                return -EINVAL;
+            }
+            else if (parse_resolution(option, optarg, &rx_frame->height,
+                                      &rx_frame->width, &rx_frame->depth) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *rx_size = rx_frame->height * rx_frame->width * rx_frame->depth;
+            rx_frame_specified = true;
+
+            break;
+
+        // Parse the number of transfers argument
+        case 'n':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            *num_transfers = int_arg;
+            break;
+
+        // Print detailed usage message
+        case 'h':
+            print_usage(true);
+            exit(0);
+
+        default:
+            print_usage(false);
+            return -EINVAL;
         }
     }
 
-    if ((*tx_channel == -1) ^ (*rx_channel == -1)) {
+    if ((*tx_channel == -1) ^ (*rx_channel == -1))
+    {
         fprintf(stderr, "Error: If one of -r/-t is specified, then both must "
-                "be.\n");
+                        "be.\n");
         return -EINVAL;
     }
 
     if ((*tx_size == DEFAULT_TRANS_SIZE) ^
-        (*rx_size == DEFAULT_TRANS_SIZE)) {
+        (*rx_size == DEFAULT_TRANS_SIZE))
+    {
         fprintf(stderr, "Error: If one of -i/-b or -o/-s is specified, then "
-                "both most be.\n");
+                        "both most be.\n");
         return -EINVAL;
     }
 
-    if (*use_vdma && (!tx_frame_specified || !rx_frame_specified)) {
+    if (*use_vdma && (!tx_frame_specified || !rx_frame_specified))
+    {
         fprintf(stderr, "Error: If -v is specified, then both -f and -g must "
-                "also be specified.\n");
+                        "also be specified.\n");
         return -EINVAL;
     }
 
@@ -335,9 +357,11 @@ static int verify_data(char *tx_buf, char *rx_buf, size_t tx_buf_size,
     // Verify words in the transmit buffer
     for (i = 0; i < tx_buf_size / sizeof(int); i++)
     {
-        if (transmit_buffer[i] != TEST_PATTERN(i)) {
+        if (transmit_buffer[i] != TEST_PATTERN(i))
+        {
             fprintf(stderr, "Test failed! The transmit buffer was overwritten "
-                    "at byte %zu.\n", i);
+                            "at byte %zu.\n",
+                    i);
             fprintf(stderr, "Expected 0x%08x, found 0x%08x.\n", TEST_PATTERN(i),
                     tx_buf[i]);
             return -EINVAL;
@@ -347,9 +371,11 @@ static int verify_data(char *tx_buf, char *rx_buf, size_t tx_buf_size,
     // Verify any leftover bytes in the buffer
     for (i = 0; i < tx_buf_size % sizeof(int); i++)
     {
-        if (tx_buf[i] != TEST_PATTERN(i + tx_buf_size / sizeof(int))) {
+        if (tx_buf[i] != TEST_PATTERN(i + tx_buf_size / sizeof(int)))
+        {
             fprintf(stderr, "Test failed! The transmit buffer was overwritten "
-                    "at byte %zu.\n", i);
+                            "at byte %zu.\n",
+                    i);
             fprintf(stderr, "Expected 0x%08x, found 0x%08x.\n", TEST_PATTERN(i),
                     tx_buf[i]);
             return -EINVAL;
@@ -360,7 +386,8 @@ static int verify_data(char *tx_buf, char *rx_buf, size_t tx_buf_size,
     rx_data_same = 0;
     for (i = 0; i < rx_buf_size / sizeof(int); i++)
     {
-        if (receive_buffer[i] == TEST_PATTERN(i+tx_buf_size)) {
+        if (receive_buffer[i] == TEST_PATTERN(i + tx_buf_size))
+        {
             rx_data_same += 1;
         }
     }
@@ -368,20 +395,25 @@ static int verify_data(char *tx_buf, char *rx_buf, size_t tx_buf_size,
     // Verify any leftover bytes in the buffer
     for (i = 0; i < rx_buf_size % sizeof(int); i++)
     {
-        if (rx_buf[i] == TEST_PATTERN(i+tx_buf_size+rx_buf_size/sizeof(int))) {
+        if (rx_buf[i] == TEST_PATTERN(i + tx_buf_size + rx_buf_size / sizeof(int)))
+        {
             rx_data_same += 1;
         }
     }
 
     // Warn the user if more than 10% of the pixels match the test pattern
     rx_data_units = rx_buf_size / sizeof(int) + rx_buf_size % sizeof(int);
-    if (rx_data_same == rx_data_units) {
+    if (rx_data_same == rx_data_units)
+    {
         fprintf(stderr, "Test Failed! The receive buffer was not updated.\n");
         return -EINVAL;
-    } else if (rx_data_same >= rx_data_units / 10) {
+    }
+    else if (rx_data_same >= rx_data_units / 10)
+    {
         match_fraction = ((double)rx_data_same) / ((double)rx_data_units);
         printf("Warning: %0.2f%% of the receive buffer matches the "
-               "initialization pattern.\n", match_fraction * 100.0);
+               "initialization pattern.\n",
+               match_fraction * 100.0);
         printf("This may mean that the receive buffer was not properly "
                "updated.\n");
     }
@@ -390,8 +422,8 @@ static int verify_data(char *tx_buf, char *rx_buf, size_t tx_buf_size,
 }
 
 static int single_transfer_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
-        int tx_size, struct axidma_video_frame *tx_frame, int rx_channel,
-        void *rx_buf, int rx_size, struct axidma_video_frame *rx_frame)
+                                int tx_size, struct axidma_video_frame *tx_frame, int rx_channel,
+                                void *rx_buf, int rx_size, struct axidma_video_frame *rx_frame)
 {
     int rc;
 
@@ -400,8 +432,9 @@ static int single_transfer_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 
     // Perform the DMA transaction
     rc = axidma_twoway_transfer(dev, tx_channel, tx_buf, tx_size, tx_frame,
-            rx_channel, rx_buf, rx_size, rx_frame, true);
-    if (rc < 0) {
+                                rx_channel, rx_buf, rx_size, rx_frame, true);
+    if (rc < 0)
+    {
         return rc;
     }
 
@@ -414,28 +447,29 @@ static int single_transfer_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 static void init_tx_data(char *tx_buf, size_t tx_buf_size)
 {
     size_t i;
-    int *transmit_buffer;
+    long *transmit_buffer;
+    // two int 8 Byte, means 64bit data
 
-    transmit_buffer = (int *)tx_buf;
+    transmit_buffer = (long *)tx_buf;
 
     // Fill the buffer with integer patterns
-    for (i = 0; i < tx_buf_size / sizeof(int); i++)
+    for (i = 0; i < tx_buf_size / sizeof(long); i++)
     {
         transmit_buffer[i] = TEST_TX_PATTERN(i);
     }
 
     // To align
     // Fill in any leftover bytes if it's not aligned
-    for (i = 0; i < tx_buf_size % sizeof(int); i++)
+    for (i = 0; i < tx_buf_size % sizeof(long); i++)
     {
-        tx_buf[i] = TEST_TX_PATTERN(i + tx_buf_size / sizeof(int));
+        tx_buf[i] = TEST_TX_PATTERN(i + tx_buf_size / sizeof(long));
     }
 
     return;
 }
 
 static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
-        int tx_size, struct axidma_video_frame *tx_frame)
+                     int tx_size, struct axidma_video_frame *tx_frame)
 {
     int rc;
 
@@ -444,10 +478,89 @@ static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 
     printf("One way transfer!\n");
     // Perform the DMA transaction
-    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf,tx_size, true);
-    if (rc < 0) {
+    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, tx_size, true);
+    if (rc < 0)
+    {
         return rc;
     }
+
+    return rc;
+}
+
+/* Initialize the rx buffers, filling buffers with a preset
+ * pattern. */
+static void init_rx_data(char *rx_buf, size_t rx_buf_size)
+{
+    size_t i;
+    char *receive_buffer;
+
+    receive_buffer = (char *)rx_buf;
+
+    // Fill the buffer with integer patterns
+    for (i = 0; i < rx_buf_size / sizeof(char); i++)
+    {
+        receive_buffer[i] = 1;
+    }
+
+    // Fill in any leftover bytes if it's not aligned
+    for (i = 0; i < rx_buf_size % sizeof(char); i++)
+    {
+        rx_buf[i] = 1;
+    }
+
+    return;
+}
+
+static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
+                     int rx_size, struct axidma_video_frame *rx_frame)
+{
+    int rc;
+
+    // Initialize the buffer region we're going to transmit
+    init_rx_data(rx_buf, rx_size);
+
+    printf("Before trans, data in 1 : %c\n", *(long *)(rx_buf + 1));
+
+    printf("One way transfer!\n");
+    // Perform the DMA transaction
+    rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
+    if (rc < 0)
+    {
+        return rc;
+    }
+
+    long *index = rx_buf;
+    int fixall = 0;
+    int fixcount = 0;
+
+    // cut the data, last some are 0
+    // rx_size -= 20 * sizeof(char);
+
+    for (int i = 1; i <= rx_size / (sizeof(long)); ++i)
+    {
+        int fix = (int)(*index) - i - fixall;
+        if (fix)
+        {
+            fixcount++;
+
+            printf("After trans, data in %04d : %04ld   ,count:%d,\n", i, *index, fixcount);
+            fixall += fix;
+            fix = 0;
+        }
+        index++;
+    }
+
+    printf("udp send start>>>>>>>>>>>>>>>>>>>>>>>\n");
+    // udp_send(rx_buf,rx_size);
+    printf("udp send end>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+    // long *tail = rx_buf + rx_size - 51;
+    // printf("last 50 >>>>>>>>>>>>>>>>>>>>>>>>>\n");
+    // for (int i = 50; i >= 0; --i)
+    // {
+    //     printf("After trans, data in %d : %ld\n", rx_size-i, *(tail));
+    //     tail++;
+    // }
 
     return rc;
 }
@@ -459,8 +572,8 @@ static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 /* Profiles the transfer and receive rates for the DMA, reporting the throughput
  * of each channel in MiB/s. */
 static int time_dma(axidma_dev_t dev, int tx_channel, void *tx_buf, int tx_size,
-        struct axidma_video_frame *tx_frame, int rx_channel, void *rx_buf,
-        int rx_size, struct axidma_video_frame *rx_frame, int num_transfers)
+                    struct axidma_video_frame *tx_frame, int rx_channel, void *rx_buf,
+                    int rx_size, struct axidma_video_frame *rx_frame, int num_transfers)
 {
     int i, rc;
     struct timeval start_time, end_time;
@@ -473,10 +586,12 @@ static int time_dma(axidma_dev_t dev, int tx_channel, void *tx_buf, int tx_size,
     for (i = 0; i < num_transfers; i++)
     {
         rc = axidma_twoway_transfer(dev, tx_channel, tx_buf, tx_size, tx_frame,
-                rx_channel, rx_buf, rx_size, rx_frame, true);
-        if (rc < 0) {
+                                    rx_channel, rx_buf, rx_size, rx_frame, true);
+        if (rc < 0)
+        {
             fprintf(stderr, "DMA failed on transfer %d, not reporting timing "
-                    "results.\n", i+1);
+                            "results.\n",
+                    i + 1);
             return rc;
         }
     }
@@ -519,14 +634,15 @@ int main(int argc, char **argv)
 
     // Check if the user overrided the default transfer size and number
     if (parse_args(argc, argv, &tx_channel, &rx_channel, &tx_size,
-            &transmit_frame, &rx_size, &receive_frame, &num_transfers,
-            &use_vdma) < 0) {
+                   &transmit_frame, &rx_size, &receive_frame, &num_transfers,
+                   &use_vdma) < 0)
+    {
         rc = 1;
         goto ret;
     }
 
-    //vdma not used
-    //parameters:
+    // vdma not used
+    // parameters:
     /*
     tx_size
     rx_size
@@ -535,27 +651,30 @@ int main(int argc, char **argv)
     printf("AXI DMA Benchmark Parameters:\n");
     printf("\tDEFAULT_TRANS_SIZE:%d \n", DEFAULT_TRANS_SIZE);
     printf("\tTx size:%d \n", tx_size);
-    if (!use_vdma) {
-        printf("\tTransmit Buffer Size: %d B\n", (tx_size));
-        printf("\tReceive Buffer Size: %d B\n", (rx_size));
-    } 
+    if (!use_vdma)
+    {
+        printf("\tTransmit Buffer Size: %d Byte\n", (tx_size));
+        printf("\tReceive Buffer Size: %d Byte\n", (rx_size));
+    }
     // if (!use_vdma) {
-    //     printf("\tTransmit Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(tx_size));
+    // printf("\tTransmit Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(tx_size));
     //     printf("\tReceive Buffer Size: %0.2f MiB\n", BYTE_TO_MIB(rx_size));
-    // } 
-    else {
+    // }
+    else
+    {
         printf("\tTransmit Buffer Size: %dx%dx%d (%0.2f MiB)\n",
-                transmit_frame.height, transmit_frame.width, transmit_frame.depth,
-                BYTE_TO_MIB(tx_size));
+               transmit_frame.height, transmit_frame.width, transmit_frame.depth,
+               BYTE_TO_MIB(tx_size));
         printf("\tReceive Buffer Size: %dx%dx%d (%0.2f MiB)\n",
-                receive_frame.height, receive_frame.width, receive_frame.depth,
-                BYTE_TO_MIB(rx_size));
+               receive_frame.height, receive_frame.width, receive_frame.depth,
+               BYTE_TO_MIB(rx_size));
     }
     printf("\tNumber of DMA Transfers: %d transfers\n\n", num_transfers);
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
-    if (axidma_dev == NULL) {
+    if (axidma_dev == NULL)
+    {
         fprintf(stderr, "Failed to initialize the AXI DMA device.\n");
         rc = 1;
         goto ret;
@@ -563,41 +682,46 @@ int main(int argc, char **argv)
 
     // Map memory regions for the transmit and receive buffers
     tx_buf = axidma_malloc(axidma_dev, tx_size);
-    if (tx_buf == NULL) {
+    if (tx_buf == NULL)
+    {
         perror("Unable to allocate transmit buffer from the AXI DMA device.");
         rc = -1;
         goto destroy_axidma;
     }
     rx_buf = axidma_malloc(axidma_dev, rx_size);
-    if (rx_buf == NULL) {
+    if (rx_buf == NULL)
+    {
         perror("Unable to allocate receive buffer from the AXI DMA device");
         rc = -1;
         goto free_tx_buf;
     }
 
-    //vdma not used
-    // Get all the transmit and receive channels
-    if (use_vdma) {
+    // vdma not used
+    //  Get all the transmit and receive channels
+    if (use_vdma)
+    {
         tx_chans = axidma_get_vdma_tx(axidma_dev);
         rx_chans = axidma_get_vdma_rx(axidma_dev);
         tx_frame = &transmit_frame;
         rx_frame = &receive_frame;
-    } 
-    //from here
-    else {
+    }
+    // from here
+    else
+    {
         tx_chans = axidma_get_dma_tx(axidma_dev);
         rx_chans = axidma_get_dma_rx(axidma_dev);
         tx_frame = NULL;
         rx_frame = NULL;
     }
 
-    
-    if (tx_chans->len < 1) {
+    if (tx_chans->len < 1)
+    {
         fprintf(stderr, "Error: No transmit channels were found.\n");
         rc = -ENODEV;
         goto free_rx_buf;
     }
-    if (rx_chans->len < 1) {
+    if (rx_chans->len < 1)
+    {
         fprintf(stderr, "Error: No receive channels were found.\n");
         rc = -ENODEV;
         goto free_rx_buf;
@@ -605,7 +729,8 @@ int main(int argc, char **argv)
 
     /* If the user didn't specify the channels, we assume that the transmit and
      * receive channels are the lowest numbered ones. */
-    if (tx_channel == -1 && rx_channel == -1) {
+    if (tx_channel == -1 && rx_channel == -1)
+    {
         tx_channel = tx_chans->data[0];
         rx_channel = rx_chans->data[0];
     }
@@ -620,14 +745,28 @@ int main(int argc, char **argv)
     // }
     // printf("Single transfer test successfully completed!\n");
 
-    printf("MM2S transfer test \n");
-    //MM2S test
-    rc = mm2s_test(axidma_dev, tx_channel, tx_buf, tx_size,
-            tx_frame);
-    if (rc < 0) {
-        goto free_rx_buf;
-    }
-    printf("MM2S transfer test successfully completed!\n");
+    // printf("MM2S transfer test \n");
+    // //MM2S test
+    // rc = mm2s_test(axidma_dev, tx_channel, tx_buf, tx_size,
+    //         tx_frame);
+    // if (rc < 0) {
+    //     goto free_rx_buf;
+    // }
+    // printf("MM2S transfer test successfully completed!\n");
+
+    // while (1)
+    // {
+        printf("S2MM transfer test \n");
+        // S2MM test
+        rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
+        if (rc < 0)
+        {
+            // goto free_rx_buf;
+            printf("trans fail once>>>>>>>>>>>>>>\n");
+        }
+        printf("S2MM transfer test completed once!\n");
+        // usleep(1000 * 50);
+    // }
 
     // Time the DMA eingine
     // No analysis
