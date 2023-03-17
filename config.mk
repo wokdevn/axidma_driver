@@ -22,7 +22,7 @@ CROSS_COMPILE = aarch64-linux-gnu-
 
 # This variable informs the kernel Makefile what architecture you're targeting.
 # This is required when building the driver, if CROSS_COMPILE is defined.
-ARCH = aarch64
+ARCH = arm64
 
 ################################################################################
 # Build Options

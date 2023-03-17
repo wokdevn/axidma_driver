@@ -93,22 +93,22 @@ int  udp_send(void *buf, int size){
 //            /*用户输入信息了,开始处理信息并发送*/
 //            if (FD_ISSET(0, &myrdSet)) {
         char sendbuf[BUFFER_SIZE];
-        long * buf_ptr = buf;
-        char indata[2];
+        char * buf_ptr = buf;
+        // char indata[2];
 
 //                fgets(indata, sizeof(indata), stdin);
 
-        sendbuf[0] = 1;
-        sendbuf[1] = 0;
-        sendbuf[2] = 2;
-        sendbuf[3] = 0;
-        sendbuf[4] = 1;
-        sendbuf[5] = 0;
-        sendbuf[6] = 2;
-        sendbuf[7] = 0;
+        // sendbuf[0] = 1;
+        // sendbuf[1] = 0;
+        // sendbuf[2] = 2;
+        // sendbuf[3] = 0;
+        // sendbuf[4] = 1;
+        // sendbuf[5] = 0;
+        // sendbuf[6] = 2;
+        // sendbuf[7] = 0;
 
-        for (int i = 8; i < BUFFER_SIZE-8; ++i) {
-            sendbuf[i] = *buf_ptr & 0xff;
+        for (int i = 0; i < BUFFER_SIZE; ++i) {
+            sendbuf[i] = *buf_ptr;
             buf_ptr++;
         }
 

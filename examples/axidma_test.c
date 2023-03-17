@@ -54,11 +54,11 @@
 #define IMAGE_SIZE (1920 * 1080)
 #define DEFAULT_TRANSFER_SIZE ((int)(IMAGE_SIZE * sizeof(int)))
 
-#define TRANS_NUM 65600
+#define TRANS_NUM 4*1320
 #define DEFAULT_TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
 // The default number of transfers to benchmark
-#define DEFAULT_NUM_TRANSFERS 1
+#define DEFAULT_NUM_TRANSFERS 4
 
 // The pattern that we fill into the buffers
 #define TEST_PATTERN(i) ((int)(0x1234ACDE ^ (i)))
@@ -492,18 +492,18 @@ static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 static void init_rx_data(char *rx_buf, size_t rx_buf_size)
 {
     size_t i;
-    char *receive_buffer;
+    long *receive_buffer;
 
-    receive_buffer = (char *)rx_buf;
+    receive_buffer = (long *)rx_buf;
 
     // Fill the buffer with integer patterns
-    for (i = 0; i < rx_buf_size / sizeof(char); i++)
+    for (i = 0; i < rx_buf_size / sizeof(long); i++)
     {
         receive_buffer[i] = 1;
     }
 
     // Fill in any leftover bytes if it's not aligned
-    for (i = 0; i < rx_buf_size % sizeof(char); i++)
+    for (i = 0; i < rx_buf_size % sizeof(long); i++)
     {
         rx_buf[i] = 1;
     }
@@ -519,7 +519,7 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // Initialize the buffer region we're going to transmit
     init_rx_data(rx_buf, rx_size);
 
-    printf("Before trans, data in 1 : %c\n", *(long *)(rx_buf + 1));
+    printf("Before trans, data in 1 : %c>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n", (*(long *)(rx_buf + 1)+ 0));
 
     printf("One way transfer!\n");
     // Perform the DMA transaction
@@ -536,22 +536,69 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // cut the data, last some are 0
     // rx_size -= 20 * sizeof(char);
 
-    for (int i = 1; i <= rx_size / (sizeof(long)); ++i)
+    for (int i = 0; i < rx_size/sizeof(long); ++i)
     {
-        int fix = (int)(*index) - i - fixall;
-        if (fix)
-        {
-            fixcount++;
+        // int fix = (int)(*index) - i - fixall;
+        // if (fix)
+        // {
+        //     fixcount++;
+            // if((*index!= 0) &&(*index!= 0)){
+            printf("After trans, data in %04d : %016lx   ,count:%d,\n", i, *index, fixcount);
 
-            printf("After trans, data in %04d : %04ld   ,count:%d,\n", i, *index, fixcount);
-            fixall += fix;
-            fix = 0;
-        }
+            // }
+        //     fixall += fix;
+        //     fix = 0;
+        // }
         index++;
     }
 
-    printf("udp send start>>>>>>>>>>>>>>>>>>>>>>>\n");
-    // udp_send(rx_buf,rx_size);
+    printf("udp send start v2.0>>>>>>>>>>>>>>>>>>>>>>>\n");
+
+    char onetwo[1320];
+    char threefour[1320];
+    char fivesix[1320];
+    char seveneight[1320];
+
+    char* char_ptr = rx_buf;
+
+    int j = 0;
+    for(int i = 0 ;i<rx_size/sizeof(char);++i){
+        if(i<1320){
+            onetwo[j] = *char_ptr;
+        }
+        else if(i<1320*2){
+            threefour[j] = *char_ptr;
+        }
+        else if(i<1320*3){
+            fivesix[j] = *char_ptr;
+        }
+        else if(i<1320*4){
+            seveneight[j] = *char_ptr;
+        }
+        j++;
+        char_ptr++;
+        if(j==1320){
+            j = 0;
+        }
+    }
+    printf("before send\n");
+
+    long* it = onetwo;
+    printf("1:%lx",*it);
+    udp_send(onetwo,1320);
+
+    it = threefour;
+    printf("2:%lx",*it);
+    udp_send(threefour,1320);
+
+    it = fivesix;
+    printf("3:%lx",*it);
+    udp_send(fivesix,1320);
+
+    it = seveneight;
+    printf("4:%lx",*it);
+    udp_send(seveneight,1320);
+
     printf("udp send end>>>>>>>>>>>>>>>>>>>>>>>\n");
 
     // long *tail = rx_buf + rx_size - 51;
@@ -630,7 +677,7 @@ int main(int argc, char **argv)
     const array_t *tx_chans, *rx_chans;
     struct axidma_video_frame transmit_frame, *tx_frame, receive_frame, *rx_frame;
 
-    printf("Enter main v1.0\n");
+    printf("Enter main v2.0\n");
 
     // Check if the user overrided the default transfer size and number
     if (parse_args(argc, argv, &tx_channel, &rx_channel, &tx_size,
@@ -753,10 +800,10 @@ int main(int argc, char **argv)
     //     goto free_rx_buf;
     // }
     // printf("MM2S transfer test successfully completed!\n");
-
-    // while (1)
-    // {
-        printf("S2MM transfer test \n");
+    int cnt = 0;
+    while (1)
+    {
+        printf("S2MM transfer test: %d>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> \n",cnt);
         // S2MM test
         rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
         if (rc < 0)
@@ -766,7 +813,8 @@ int main(int argc, char **argv)
         }
         printf("S2MM transfer test completed once!\n");
         // usleep(1000 * 50);
-    // }
+        cnt++;
+    }
 
     // Time the DMA eingine
     // No analysis

@@ -9,7 +9,7 @@
 
 #define DEST_PORT 2800
 #define DSET_IP_ADDRESS  "192.168.0.30"
-#define BUFFER_SIZE 8000
+#define BUFFER_SIZE 1320
 
 #define CLIENT_PORT 8001
 
