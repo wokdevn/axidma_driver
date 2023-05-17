@@ -476,7 +476,7 @@ static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // Initialize the buffer region we're going to transmit
     init_tx_data(tx_buf, tx_size);
 
-    printf("One way transfer!\n");
+    // printf("One way transfer!\n");
     // Perform the DMA transaction
     rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, tx_size, true);
     if (rc < 0)
@@ -519,9 +519,9 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // Initialize the buffer region we're going to transmit
     init_rx_data(rx_buf, rx_size);
 
-    printf("Before trans, data in 1 : %c>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n", (*(long *)(rx_buf + 1)+ 0));
+    // printf("Before trans, data in 1 : %c>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n", (*(long *)(rx_buf + 1)+ 0));
 
-    printf("One way transfer!\n");
+    // printf("One way transfer!\n");
     // Perform the DMA transaction
     rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
     if (rc < 0)
@@ -536,7 +536,8 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // cut the data, last some are 0
     // rx_size -= 20 * sizeof(char);
 
-    for (int i = 0; i < rx_size/sizeof(long); ++i)
+    // for (int i = 0; i < rx_size/sizeof(long); ++i)
+    for (int i = 0; i < 2; ++i)
     {
         // int fix = (int)(*index) - i - fixall;
         // if (fix)
@@ -581,25 +582,25 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
             j = 0;
         }
     }
-    printf("before send\n");
+    // printf("before send\n");
 
     long* it = onetwo;
-    printf("1:%lx",*it);
+    // printf("1:%lx",*it);
     udp_send(onetwo,1320);
 
     it = threefour;
-    printf("2:%lx",*it);
+    // printf("2:%lx",*it);
     udp_send(threefour,1320);
 
     it = fivesix;
-    printf("3:%lx",*it);
+    // printf("3:%lx",*it);
     udp_send(fivesix,1320);
 
     it = seveneight;
-    printf("4:%lx",*it);
+    // printf("4:%lx",*it);
     udp_send(seveneight,1320);
 
-    printf("udp send end>>>>>>>>>>>>>>>>>>>>>>>\n");
+    // printf("udp send end>>>>>>>>>>>>>>>>>>>>>>>\n");
 
     // long *tail = rx_buf + rx_size - 51;
     // printf("last 50 >>>>>>>>>>>>>>>>>>>>>>>>>\n");
@@ -677,7 +678,7 @@ int main(int argc, char **argv)
     const array_t *tx_chans, *rx_chans;
     struct axidma_video_frame transmit_frame, *tx_frame, receive_frame, *rx_frame;
 
-    printf("Enter main v3.0\n");
+    printf("Enter main v3.0 change jiffs\n");
 
     // Check if the user overrided the default transfer size and number
     if (parse_args(argc, argv, &tx_channel, &rx_channel, &tx_size,
@@ -792,31 +793,31 @@ int main(int argc, char **argv)
     // }
     // printf("Single transfer test successfully completed!\n");
 
-    printf("MM2S transfer test \n");
-    //MM2S test
-    rc = mm2s_test(axidma_dev, tx_channel, tx_buf, tx_size,
-            tx_frame);
-    if (rc < 0) {
-        goto free_rx_buf;
-    }
-    printf("MM2S transfer test successfully completed!\n");
-
-
-    // int cnt = 0;
-    // while (1)
-    // {
-    //     printf("S2MM transfer test: %d>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> \n",cnt);
-    //     // S2MM test
-    //     rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
-    //     if (rc < 0)
-    //     {
-    //         // goto free_rx_buf;
-    //         printf("trans fail once>>>>>>>>>>>>>>\n");
-    //     }
-    //     printf("S2MM transfer test completed once!\n");
-    //     // usleep(1000 * 50);
-    //     cnt++;
+    // printf("MM2S transfer test \n");
+    // //MM2S test
+    // rc = mm2s_test(axidma_dev, tx_channel, tx_buf, tx_size,
+    //         tx_frame);
+    // if (rc < 0) {
+    //     goto free_rx_buf;
     // }
+    // printf("MM2S transfer test successfully completed!\n");
+
+
+    int cnt = 0;
+    while (1)
+    {
+        // printf("S2MM transfer test: %d>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> \n",cnt);
+        // S2MM test
+        rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
+        if (rc < 0)
+        {
+            // goto free_rx_buf;
+            printf("????????????????????trans fail once\n");
+        }
+        printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once!\n");
+        // usleep(1000 * 50);
+        cnt++;
+    }
 
     // Time the DMA eingine
     // No analysis
