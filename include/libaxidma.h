@@ -21,6 +21,8 @@
  **/
 struct axidma_dev;
 
+struct udpmm2s;
+
 /**
  * Type definition for an AXI DMA device.
  *

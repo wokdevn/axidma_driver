@@ -46,7 +46,7 @@
 
 // The default timeout for DMA is 10 seconds
 // #define AXIDMA_DMA_TIMEOUT      10000
-#define AXIDMA_DMA_TIMEOUT      2000
+#define AXIDMA_DMA_TIMEOUT      1
 
 // A convenient structure to pass between prep and start transfer functions
 struct axidma_transfer {
@@ -389,15 +389,15 @@ int axidma_read_transfer(struct axidma_device *dev,
     rx_tfr.cb_data = &dev->cb_data[trans->channel_id];
 
     // Prepare the receive transfer
+    printf("Start prep>>>>>>>>>>>>>>>>>>>>>>>>\n");
     rc = axidma_prep_transfer(rx_chan, &rx_tfr);
-    axidma_info("Start prep>>>>>>>>>>>>>>>>>>>>>>>>\n");
     if (rc < 0) {
         return rc;
     }
 
     // Submit the receive transfer, and wait for it to complete
+    printf("Start transfer>>>>>>>>>>>>>>>>>>>>>>>>\n");
     rc = axidma_start_transfer(rx_chan, &rx_tfr);
-    axidma_info("Start transfer>>>>>>>>>>>>>>>>>>>>>>>>\n");
     if (rc < 0) {
         return rc;
     }

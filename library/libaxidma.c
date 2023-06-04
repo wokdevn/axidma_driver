@@ -31,6 +31,8 @@
  * Internal definitions
  *----------------------------------------------------------------------------*/
 
+
+
 // A structure that holds metadata about each channel
 typedef struct dma_channel {
     enum axidma_dir dir;        ///< Direction of the channel
