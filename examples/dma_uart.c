@@ -812,18 +812,25 @@ int main(int argc, char **argv)
     printf("udp send test once\n");
     udp_send("111", 1320);
 
+    int okCount = 0;
+    int failCount = 0;
+    int totalCount = 0;
+
     while (1)
     {
         // printf("S2MM transfer test: %d>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> \n",cnt);
         // S2MM test
+        totalCount++;
         rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
         if (rc < 0)
         {
             // goto free_rx_buf;
-            printf("????????????????????trans fail once\n");
+            // printf("????????????????????trans fail once\n");
+            failCount++;
         }
         else
         {
+            okCount++;
             printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once! total count: %d\n", cnt);
             // rc = mm2s_test(axidma_dev, tx_channel, tx_buf, tx_size,
             //                tx_frame);
@@ -837,7 +844,10 @@ int main(int argc, char **argv)
             // }
             cnt++;
         }
-        printf("\n");
+        if (totalCount % 500 == 0)
+        {
+            printf("Total count:%d, Ok count: %d, fail count: %d\n",totalCount,okCount,failCount);
+        }
         usleep(2);
     }
 

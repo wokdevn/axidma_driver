@@ -460,11 +460,14 @@ int axidma_oneway_transfer(axidma_dev_t dev, int channel, void *buf,
     axidma_cmd = dir_to_ioctl(dma_chan->dir);
 
     // Perform the given transfer
-    printf("before ioctl\n");
+    // printf("before ioctl\n");
     rc = ioctl(dev->fd, axidma_cmd, &trans);
-    printf("after ioctl rc:%d\n",rc);
+    // printf("after ioctl rc:%d\n",rc);
     if (rc < 0) {
-        perror("Failed to perform the AXI DMA transfer\n");
+        // perror("Failed to perform the AXI DMA transfer\n");
+        // printf("Failed to perform the AXI DMA transfer\n");
+        // printf("errno:%d",errno);
+        // fprintf(stderr,"error::,,%s,,\n",strerror(errno));
         return rc;
     }
 

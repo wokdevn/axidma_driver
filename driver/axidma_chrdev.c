@@ -431,7 +431,7 @@ static long axidma_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
                            "AXIDMA_DMA_READ.\n");
                 return -EFAULT;
             }
-            axidma_info("Start read>>>>>>>>>>>>>>>>>>>>>>>>\n");
+            // axidma_info("Start read>>>>>>>>>>>>>>>>>>>>>>>>\n");
             rc = axidma_read_transfer(dev, &trans);
             break;
 

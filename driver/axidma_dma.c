@@ -294,12 +294,13 @@ static int axidma_start_transfer(struct axidma_chan *chan,
 
     // Wait for the completion timeout or the DMA to complete
     if (dma_tfr->wait) {
+        // axidma_info("timeout setting\n");
         timeout = msecs_to_jiffies(AXIDMA_DMA_TIMEOUT);
         time_remain = wait_for_completion_timeout(dma_comp, timeout);
         status = dma_async_is_tx_complete(chan->chan, dma_cookie, NULL, NULL);
-
+        // axidma_info("after status\n");
         if (time_remain == 0) {
-            axidma_err("%s %s transaction timed out.\n", type, direction);
+            // axidma_err("%s %s transaction timed out.\n", type, direction);
             rc = -ETIME;
             goto stop_dma;
         } else if (status != DMA_COMPLETE) {
@@ -389,14 +390,14 @@ int axidma_read_transfer(struct axidma_device *dev,
     rx_tfr.cb_data = &dev->cb_data[trans->channel_id];
 
     // Prepare the receive transfer
-    printf("Start prep>>>>>>>>>>>>>>>>>>>>>>>>\n");
+    // axidma_info("Start prep>>>>>>>>>>>>>>>>>>>>>>>>\n");
     rc = axidma_prep_transfer(rx_chan, &rx_tfr);
     if (rc < 0) {
         return rc;
     }
 
     // Submit the receive transfer, and wait for it to complete
-    printf("Start transfer>>>>>>>>>>>>>>>>>>>>>>>>\n");
+    // axidma_info("Start transfer>>>>>>>>>>>>>>>>>>>>>>>>\n");
     rc = axidma_start_transfer(rx_chan, &rx_tfr);
     if (rc < 0) {
         return rc;
