@@ -44,7 +44,7 @@ int  udp_send(void *buf, int size){
     len = sizeof(addr_serv);
 
     addr_cli.sin_family = AF_INET;
-    addr_cli.sin_port = htons(2700);
+    addr_cli.sin_port = htons(CLIENT_PORT);
     addr_cli.sin_addr.s_addr = 0;
 
     int ret = 0;

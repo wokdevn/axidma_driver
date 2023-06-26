@@ -8,6 +8,6 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#define REMOTE_PORT 8000
-#define LOCAL_PORT 8001
+#define REMOTE_PORT 5001
+#define LOCAL_PORT 1234
 void* udp_recv(void * args);

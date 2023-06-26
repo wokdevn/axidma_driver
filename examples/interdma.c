@@ -19,17 +19,41 @@
 
 #include "udpserver.h"
 #include "udpclient.h"
+#include "interdma.h"
+#include "util_interdma.h"
 
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
+#define HEAD_SIZE 8
 
 // The size of data to send per transfer, in byte
-#define TRANS_NUM 8
+#define TRANS_NUM 8*100
 #define TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
+
+#define MAX_MM2S_DATA_NUM (5632 * ((2 << 8) - 1) / (8 * TRANS_NUM))
+#define MM2S_MAX_SIZE ((int)(TRANS_NUM * sizeof(char) * MAX_MM2S_DATA_NUM))
 
 // The pattern that we fill into the buffers
 #define TEST_PATTERN(i) ((int)(0x1234ACDE ^ (i)))
+
+// modu:11, mb:9, ldpcnum:15
+// bin: 0001 0000, 0010 0000, 0011 0000, 0100 0000, 0101 "11""00, 1001" "0000, 0111 1"000, 1000 0000,
+// #define TEST_DATA 0x102030405"8"607080
+#define TEST_DATA 0x102030405c907880
+
+// crc:false, ldpc_ok:19, amp:2,  modu:11, mb:9, ldpcnum:15
+// bin: 0001 0000, 0010 0000, 0011 0000, "0""000 0100, 11"11" "11""00, 1000" "0000, 0110 0"000, 1000 0000,
+// #define TEST_DATA 0x102030405"8"607080
+#define TEST_DATA_S2MM 0x01203004fc806880
+
+#define CHANNEL_CORRECT_GROUP 69
+#define DATA_EQU_BLOCK 10
+#define MODU_CHARACTOR 448
+#define DATA_MAX MODU_CHARACTOR *(CHANNEL_CORRECT_GROUP * DATA_EQU_BLOCK - 1)
+#define HOLE 512
+#define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
+#define LDPC_K 5632
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -52,7 +76,8 @@ static int init_args(int *tx_channel, int *rx_channel,
     *use_vdma = false;
     *tx_channel = -1;
     *rx_channel = -1;
-    *tx_size = TRANS_SIZE;
+    *tx_size = MM2S_MAX_SIZE;
+    printf("MM2S_MAX_SIZE:%d\n", MM2S_MAX_SIZE);
     tx_frame->height = -1;
     tx_frame->width = -1;
     tx_frame->depth = -1;
@@ -77,34 +102,105 @@ static void init_tx_data(char *tx_buf, size_t tx_buf_size)
     // Fill the buffer with integer patterns
     for (i = 0; i < tx_buf_size / sizeof(long); i++)
     {
-        transmit_buffer[i] = -1;
+        transmit_buffer[i] = -16;
     }
 
     // To align
     // Fill in any leftover bytes if it's not aligned
     for (i = 0; i < tx_buf_size % sizeof(long); i++)
     {
-        tx_buf[i] = -1;
+        transmit_buffer[i] = -16;
     }
 
     return;
 }
 
-static int mm2s_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
-                     int tx_size, struct axidma_video_frame *tx_frame)
+/* Initialize the tx buffers with 0, filling buffers with a preset
+ * pattern. */
+static void clean_tx_data(char *tx_buf, size_t tx_buf_size)
 {
-    int rc;
+    size_t i;
+    long *transmit_buffer;
+    // two int 8 Byte, means 64bit data
+
+    transmit_buffer = (long *)tx_buf;
+
+    // Fill the buffer with integer patterns
+    for (i = 0; i < tx_buf_size / sizeof(long); i++)
+    {
+        transmit_buffer[i] = 0;
+    }
+
+    // To align
+    // Fill in any leftover bytes if it's not aligned
+    for (i = 0; i < tx_buf_size % sizeof(long); i++)
+    {
+        transmit_buffer[i] = 0;
+    }
+
+    return;
+}
+
+static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
+                         int tx_size, struct axidma_video_frame *tx_frame)
+{
+    int rc = 0;
+
+    char *p = tx_buf;
 
     // Initialize the buffer region we're going to transmit
-    init_tx_data(tx_buf, tx_size);
+    // data: all f
+    clean_tx_data(tx_buf, tx_size);
 
     // printf("One way transfer!\n");
     // Perform the DMA transaction
-    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, tx_size, true);
+
+    mm2s_f msf;
+    msf.ldpcNum = 89;
+    msf.Mb = 7;
+    msf.modulation = QPSK;
+    unsigned char pack[HEAD_SIZE] = {0};
+    constrM2S(&msf, &pack);
+
+    int index = 0;
+
+    p = p + index;
+    memcpy(p, pack, HEAD_SIZE);
+
+    index += HEAD_SIZE;
+    p = p + index;
+
+    int datalen_inbit = msf.ldpcNum * LDPC_K;
+    int datalen_inbyte = (datalen_inbit % 8 != 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
+    init_tx_data(p, datalen_inbyte);
+
+    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, true);
     if (rc < 0)
     {
         return rc;
     }
+
+    // int bitnum = msf.ldpcNum * LDPC_K;
+    // int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
+
+    // int it = 0;
+    // init_tx_data(tx_buf, tx_size);
+    // while (wordnum)
+    // {
+    //     int rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, tx_size, true);
+    //     if (rc < 0)
+    //     {
+    //         printf("data tx failed\n");
+    //         continue;
+    //     }
+
+    //     it++;
+    //     --wordnum;
+
+    //     long *index = tx_buf;
+
+    //     printf("tx data %04d : %016lx \n", it, *index);
+    // }
 
     return rc;
 }
@@ -133,37 +229,69 @@ static void init_rx_data(char *rx_buf, size_t rx_buf_size)
     return;
 }
 
-static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
-                     int rx_size, struct axidma_video_frame *rx_frame)
+static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
+                         int rx_size, struct axidma_video_frame *rx_frame)
 {
     int rc;
 
     // Initialize the buffer region we're going to transmit
+    // before rx anything, data is 1 in long
     init_rx_data(rx_buf, rx_size);
 
     // Perform the DMA transaction
     rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
-    if (rc < 0)
-    {
-        return rc;
-    }
 
+    // get first word
     long *index = rx_buf;
-    int fixall = 0;
-    int fixcount = 0;
 
-    printf("After trans, data in %04d : %016lx   ,count:%d,\n", 1, *index, fixcount);
+    printf("After trans, data in first word : %016lx \n", *index);
 
-    printf("udp send start v2.0>>>>>>>>>>>>>>>>>>>>>>>\n");
+    long data_s = *index;
+    printf("data_S: 0x%lx\n", data_s);
+    print_b(&data_s, sizeof(data_s));
 
-    if (*index == -1)
+    unsigned char charpack_s[8] = {0};
+    long2char(data_s, charpack_s);
+
+    int j = getHeadS2M(charpack_s);
+    if (j == 1234)
     {
-        char flag[8];
-        for (int i = 0; i < 8; ++i)
+        unsigned char bitpack_s[64] = {0};
+        char2bit(charpack_s, 8, bitpack_s);
+
+        s2mm_f sf;
+        getParamS2M(&sf, bitpack_s);
+
+        printf("head:%d\n", j);
+        printf("crc:%d\n", sf.crc_r);
+        printf("ldpc_t:%d\n", sf.ldpc_tnum);
+        printf("amp:%d\n", sf.amp_dresult);
+        printf("modula:%d\n", sf.modu);
+        printf("mb:%d\n", sf.Mb);
+        printf("ldpcnum:%d\n", sf.ldpcnum);
+
+        int bitnum = LDPC_K * sf.ldpcnum;
+        int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
+
+        printf("wordnum:%d\n",wordnum);
+
+        int it = 0;
+        while (wordnum)
         {
-            flag[i] = 0xff;
+            int rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
+            if (rc < 0)
+            {
+                printf("data recv failed\n");
+                continue;
+            }
+
+            it++;
+            --wordnum;
+
+            long *index = rx_buf;
+
+            printf("data %04d : %016lx \n", it, *index);
         }
-        udp_send(flag, 1320);
     }
 
     return rc;
@@ -173,75 +301,82 @@ void *udp_recv(void *args)
 {
     struct udpmm2s *arg_thread1;
     arg_thread1 = (struct udpmm2s *)args;
-    /* sock_fd --- socket文件描述符 创建udp套接字*/
-    int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_fd < 0)
-    {
-        perror("socket");
-        exit(1);
-    }
+    // /* sock_fd --- socket文件描述符 创建udp套接字*/
+    // int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    // if (sock_fd < 0)
+    // {
+    //     perror("socket");
+    //     exit(1);
+    // }
 
-    printf("UDP RECV ongoing\n\n");
+    printf("MM2S ongoing\n\n");
 
-    /* 将套接字和IP、端口绑定 */
-    struct sockaddr_in addr_serv;
-    int len;
-    memset(&addr_serv, 0, sizeof(struct sockaddr_in)); // 每个字节都用0填充
-    addr_serv.sin_family = AF_INET;                    // 使用IPV4地址
-    addr_serv.sin_port = htons(LOCAL_PORT);            // 端口
-    /* INADDR_ANY表示不管是哪个网卡接收到数据，只要目的端口是SERV_PORT，就会被该应用程序接收到 */
-    addr_serv.sin_addr.s_addr = htonl(INADDR_ANY); // 自动获取IP地址
-    len = sizeof(addr_serv);
+    // /* 将套接字和IP、端口绑定 */
+    // struct sockaddr_in addr_serv;
+    // int len;
+    // memset(&addr_serv, 0, sizeof(struct sockaddr_in)); // 每个字节都用0填充
+    // addr_serv.sin_family = AF_INET;                    // 使用IPV4地址
+    // addr_serv.sin_port = htons(LOCAL_PORT);            // 端口
+    // /* INADDR_ANY表示不管是哪个网卡接收到数据，只要目的端口是SERV_PORT，就会被该应用程序接收到 */
+    // addr_serv.sin_addr.s_addr = htonl(INADDR_ANY); // 自动获取IP地址
+    // len = sizeof(addr_serv);
 
-    /* 绑定socket */
-    if (bind(sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
-    {
-        perror("bind error:");
-        exit(1);
-    }
+    // /* 绑定socket */
+    // if (bind(sock_fd, (struct sockaddr *)&addr_serv, sizeof(addr_serv)) < 0)
+    // {
+    //     perror("bind error:");
+    //     exit(1);
+    // }
 
-    int recv_num;
-    int send_num;
-    char send_buf[20] = "i am server!";
-    char recv_buf[20];
-    struct sockaddr_in addr_client;
+    // int recv_num;
+    // int send_num;
+    // char send_buf[20] = "i am server!";
+    // char recv_buf[20];
+    // struct sockaddr_in addr_client;
 
+    int total = 0;
+    int ok = 0;
+    int fail = 0;
     while (1)
     {
-        printf("rev wait:\n");
+        // recv_num = recvfrom(sock_fd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&addr_client, (socklen_t *)&len);
 
-        recv_num = recvfrom(sock_fd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&addr_client, (socklen_t *)&len);
+        // if (recv_num < 0)
+        // {
+        //     perror("recvfrom error:");
+        //     exit(1);
+        // }
 
-        if (recv_num < 0)
-        {
-            perror("recvfrom error:");
-            exit(1);
-        }
+        // recv_buf[recv_num] = '\0';
+        // printf("receive %d bytes: \n", recv_num);
+        // for (int i = 0; i < recv_num; i++)
+        // {
+        //     printf("%02x ", recv_buf[i]);
+        // }
+        // printf("\n");
 
-        recv_buf[recv_num] = '\0';
-        printf("receive %d bytes: \n", recv_num);
-        for (int i = 0; i < recv_num; i++)
-        {
-            printf("%02x ", recv_buf[i]);
-        }
-        printf("\n");
-
-        if (recv_num > 0)
-        {
-            int rc = mm2s_test(arg_thread1->axidma_dev, arg_thread1->tx_channel, arg_thread1->tx_buf, arg_thread1->tx_size,
+        // if (recv_num > 0)
+        // {
+        total += 1;
+        int rc = mm2s_all_test(arg_thread1->axidma_dev, arg_thread1->tx_channel, arg_thread1->tx_buf, arg_thread1->tx_size,
                                arg_thread1->tx_frame);
-            if (rc < 0)
-            {
-                printf("????????????Send MM2S failed\n");
-            }
-            else
-            {
-                printf("!!!!!!!!!!!!Send MM2S success\n");
-            }
+        if (rc < 0)
+        {
+            fail++;
         }
+        else
+        {
+            ok++;
+        }
+        if (total % 50 == 0)
+        {
+            printf("total: %d, ok: %d, fail: %d\n", total, ok, fail);
+        }
+        // }
+        usleep(1000 * 1);
     }
 
-    close(sock_fd);
+    // close(sock_fd);
 
     return 0;
 }
@@ -334,7 +469,9 @@ int main(int argc, char **argv)
     printf("Using transmit channel %d and receive channel %d.\n", tx_channel,
            rx_channel);
 
-    int cnt = 0;
+    /*
+    udp receive not used for now, just use the mm2s part to send data
+    */
 
     struct udpmm2s m_udpmm2s;
     m_udpmm2s.axidma_dev = axidma_dev;
@@ -347,19 +484,22 @@ int main(int argc, char **argv)
     if (ret != 0)
     {
         printf("pthread_create error: error_code=%d", ret);
+        goto free_rx_buf;
     }
 
-    printf("udp send test once\n");
-    udp_send("111", 1320);
+    // printf("udp send test once\n");
+    // udp_send("111", 1320);
 
     int okCount = 0;
     int failCount = 0;
     int totalCount = 0;
 
+    printf("s2mm start\n");
     while (1)
     {
         totalCount++;
-        rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
+        printf("s2mm total:%d\n", totalCount);
+        rc = s2mm_all_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
         if (rc < 0)
         {
             failCount++;
@@ -367,14 +507,13 @@ int main(int argc, char **argv)
         else
         {
             okCount++;
-            printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once! total count: %d\n", cnt);
-            cnt++;
+            printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once! total count: %d\n", okCount);
         }
-        if (totalCount % 500 == 0)
+        if (totalCount % 5 == 0)
         {
             printf("Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(2);
+        usleep(1);
     }
 
     printf("Exiting.\n\n");
