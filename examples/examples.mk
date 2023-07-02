@@ -28,7 +28,7 @@ EXAMPLES_OUTPUT_EXECUTABLES = $(addprefix $(OUTPUT_DIR)/,$(EXAMPLES_TARGETS))
 
 # The local helper function files used across the example programs.
 UTIL_DIR = $(EXAMPLES_DIR)
-UTIL_FILES = util.c udpclient.c utilMM2S.c#udpserver.c
+UTIL_FILES = util.c udpclient.c util_interdma.c#udpserver.c
 UTIL = $(addprefix $(UTIL_DIR)/,$(UTIL_FILES))
 
 # The compiler flags used to compile the examples

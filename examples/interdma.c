@@ -28,11 +28,11 @@
 #define HEAD_SIZE 8
 
 // The size of data to send per transfer, in byte
-#define TRANS_NUM 8*100
+#define TRANS_NUM 8
 #define TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
-#define MAX_MM2S_DATA_NUM (5632 * ((2 << 8) - 1) / (8 * TRANS_NUM))
-#define MM2S_MAX_SIZE ((int)(TRANS_NUM * sizeof(char) * MAX_MM2S_DATA_NUM))
+#define MAX_DATA_NUM (LDPC_K * ((2 << 8) - 1) / (8 * TRANS_NUM))
+#define MAX_SIZE ((int)(TRANS_NUM * sizeof(char) * MAX_DATA_NUM))
 
 // The pattern that we fill into the buffers
 #define TEST_PATTERN(i) ((int)(0x1234ACDE ^ (i)))
@@ -76,12 +76,11 @@ static int init_args(int *tx_channel, int *rx_channel,
     *use_vdma = false;
     *tx_channel = -1;
     *rx_channel = -1;
-    *tx_size = MM2S_MAX_SIZE;
-    printf("MM2S_MAX_SIZE:%d\n", MM2S_MAX_SIZE);
+    *tx_size = MAX_SIZE;
     tx_frame->height = -1;
     tx_frame->width = -1;
     tx_frame->depth = -1;
-    *rx_size = TRANS_SIZE;
+    *rx_size = MAX_SIZE;
     rx_frame->height = -1;
     rx_frame->width = -1;
     rx_frame->depth = -1;
@@ -160,17 +159,23 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     msf.Mb = 7;
     msf.modulation = QPSK;
     unsigned char pack[HEAD_SIZE] = {0};
+    unsigned char pack_r[HEAD_SIZE] = {0};
     constrM2S(&msf, &pack);
+
+    // revert in char, trans will revert in char
+    // unknown if caused by LSB/MSB, this machine is LSB
+    revert_char(&pack, HEAD_SIZE, &pack_r);
 
     int index = 0;
 
     p = p + index;
-    memcpy(p, pack, HEAD_SIZE);
+    memcpy(p, pack_r, HEAD_SIZE);
 
     index += HEAD_SIZE;
     p = p + index;
 
-    int datalen_inbit = msf.ldpcNum * LDPC_K;
+    int datalen_inbit = msf.ldpcNum * LDPC_K; // 501284
+    // 7832
     int datalen_inbyte = (datalen_inbit % 8 != 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
     init_tx_data(p, datalen_inbyte);
 
@@ -207,7 +212,7 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 
 /* Initialize the rx buffers, filling buffers with a preset
  * pattern. */
-static void init_rx_data(char *rx_buf, size_t rx_buf_size)
+static void clean_rx_data(char *rx_buf, size_t rx_buf_size)
 {
     size_t i;
     long *receive_buffer;
@@ -217,36 +222,26 @@ static void init_rx_data(char *rx_buf, size_t rx_buf_size)
     // Fill the buffer with integer patterns
     for (i = 0; i < rx_buf_size / sizeof(long); i++)
     {
-        receive_buffer[i] = 1;
+        receive_buffer[i] = 0;
     }
 
     // Fill in any leftover bytes if it's not aligned
     for (i = 0; i < rx_buf_size % sizeof(long); i++)
     {
-        rx_buf[i] = 1;
+        rx_buf[i] = 0;
     }
 
     return;
 }
 
-static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
-                         int rx_size, struct axidma_video_frame *rx_frame)
+void getInfo(void * rx_buf)
 {
-    int rc;
-
-    // Initialize the buffer region we're going to transmit
-    // before rx anything, data is 1 in long
-    init_rx_data(rx_buf, rx_size);
-
-    // Perform the DMA transaction
-    rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
-
     // get first word
-    long *index = rx_buf;
+    long *p_l = rx_buf;
 
-    printf("After trans, data in first word : %016lx \n", *index);
+    printf("After trans, data in first word : %016lx \n", *p_l);
 
-    long data_s = *index;
+    long data_s = *p_l;
     printf("data_S: 0x%lx\n", data_s);
     print_b(&data_s, sizeof(data_s));
 
@@ -273,26 +268,45 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
         int bitnum = LDPC_K * sf.ldpcnum;
         int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
 
-        printf("wordnum:%d\n",wordnum);
+        printf("wordnum:%d\n", wordnum);
+
+        // do
+        // {
+        //     rc = axidma_oneway_transfer(dev, rx_channel, rx_buf + HEAD_SIZE, wordnum * 8, true);
+        // } while (rc < 0);
+
+        printf("head:%d\n", j);
 
         int it = 0;
-        while (wordnum)
+        long *index_l = rx_buf;
+        // index_l++;
+        int ct = sf.ldpcnum *LDPC_K/PACK_LEN +1;
+        while (ct)
         {
-            int rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
-            if (rc < 0)
-            {
-                printf("data recv failed\n");
-                continue;
-            }
-
+            printf("now data %d: %016lx \n", it, *index_l);
             it++;
-            --wordnum;
-
-            long *index = rx_buf;
-
-            printf("data %04d : %016lx \n", it, *index);
+            index_l++;
+            ct--;
         }
     }
+}
+
+static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
+                         int rx_size, struct axidma_video_frame *rx_frame)
+{
+    int rc = 0;
+
+    // Initialize the buffer region we're going to transmit
+    // before rx anything, data is 1 in long
+    clean_rx_data(rx_buf, rx_size);
+
+    // Perform the DMA transaction
+    do
+    {
+        rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, true);
+    } while (rc < 0);
+
+    getInfo(rx_buf);
 
     return rc;
 }
@@ -370,10 +384,10 @@ void *udp_recv(void *args)
         }
         if (total % 50 == 0)
         {
-            printf("total: %d, ok: %d, fail: %d\n", total, ok, fail);
+            printf("mm2s total: %d, ok: %d, fail: %d\n", total, ok, fail);
         }
         // }
-        usleep(1000 * 1);
+        usleep(10);
     }
 
     // close(sock_fd);
@@ -394,6 +408,8 @@ int main(int argc, char **argv)
     axidma_dev_t axidma_dev;
     const array_t *tx_chans, *rx_chans;
     struct axidma_video_frame transmit_frame, *tx_frame, receive_frame, *rx_frame;
+
+    checkLSB();
 
     printf("Enter main v5.0 two devices connect\n");
 
@@ -513,7 +529,7 @@ int main(int argc, char **argv)
         {
             printf("Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(1);
+        usleep(1000 * 10);
     }
 
     printf("Exiting.\n\n");

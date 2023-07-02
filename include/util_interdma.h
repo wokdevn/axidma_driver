@@ -16,7 +16,7 @@
 const static int LONG_BIT_COUNT = CHAR_BIT * sizeof(long);
 
 void print_b(void *pointer,size_t size);
-void revert(char* data,int len,char* r_data);
+void revert_char(char* data,int len,char* r_data);
 char *itobs(long n, char *ps);
 //convert long to char
 char* long2char(long num,char *str);
@@ -30,5 +30,8 @@ void getParamM2S(struct MM2S_First * mm2s_first, char * data);
 
 int getHeadS2M(char* data);
 void getParamS2M(s2mm_f* s2mm_first,char* data);
+
+//return 1:lsb  0:msb
+int checkLSB();
 
 #endif //TWODMA_UTILMM2S_H
