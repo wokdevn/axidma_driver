@@ -22,4 +22,6 @@ int parse_resolution(char option, char *arg_str, int *height, int *width,
 int robust_read(int fd, char *buf, int buf_size);
 int robust_write(int fd, char *buf, int buf_size);
 
+char* Int2String(int num,char *str);
+
 #endif /* UTIL_H_ */

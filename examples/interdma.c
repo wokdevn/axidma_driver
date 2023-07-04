@@ -90,6 +90,7 @@ static int init_args(int *tx_channel, int *rx_channel,
 
 /* Initialize the tx buffers, filling buffers with a preset
  * pattern. */
+// size in char
 static void init_tx_data(char *tx_buf, size_t tx_buf_size)
 {
     size_t i;
@@ -101,14 +102,14 @@ static void init_tx_data(char *tx_buf, size_t tx_buf_size)
     // Fill the buffer with integer patterns
     for (i = 0; i < tx_buf_size / sizeof(long); i++)
     {
-        transmit_buffer[i] = -16;
+        transmit_buffer[i] = 0x0102030400000000 | i;
     }
 
     // To align
     // Fill in any leftover bytes if it's not aligned
     for (i = 0; i < tx_buf_size % sizeof(long); i++)
     {
-        transmit_buffer[i] = -16;
+        transmit_buffer[i + tx_buf_size / sizeof(long)] = 0x0102030400000000 | (i + tx_buf_size / sizeof(long));
     }
 
     return;
@@ -119,20 +120,13 @@ static void init_tx_data(char *tx_buf, size_t tx_buf_size)
 static void clean_tx_data(char *tx_buf, size_t tx_buf_size)
 {
     size_t i;
-    long *transmit_buffer;
+    char *transmit_buffer;
     // two int 8 Byte, means 64bit data
 
-    transmit_buffer = (long *)tx_buf;
+    transmit_buffer = tx_buf;
 
     // Fill the buffer with integer patterns
-    for (i = 0; i < tx_buf_size / sizeof(long); i++)
-    {
-        transmit_buffer[i] = 0;
-    }
-
-    // To align
-    // Fill in any leftover bytes if it's not aligned
-    for (i = 0; i < tx_buf_size % sizeof(long); i++)
+    for (i = 0; i < tx_buf_size; i++)
     {
         transmit_buffer[i] = 0;
     }
@@ -145,11 +139,31 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 {
     int rc = 0;
 
-    char *p = tx_buf;
+    char *p_tx_buf = tx_buf;
 
     // Initialize the buffer region we're going to transmit
-    // data: all f
-    clean_tx_data(tx_buf, tx_size);
+    // data: all 0
+    clean_tx_data(tx_buf, MAX_SIZE);
+
+    char *zero_check = tx_buf;
+    int zero_flag = 0;
+    for (int i = 0; i < MAX_SIZE; ++i)
+    {
+        if (*zero_check != 0)
+        {
+            zero_flag = 1;
+        }
+        zero_check++;
+    }
+
+    if (zero_flag)
+    {
+        printf("tx mm2s error: not clean !!!!\n");
+    }
+    else
+    {
+        printf("tx mm2s ok: clean\n");
+    }
 
     // printf("One way transfer!\n");
     // Perform the DMA transaction
@@ -161,23 +175,32 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     unsigned char pack[HEAD_SIZE] = {0};
     unsigned char pack_r[HEAD_SIZE] = {0};
     constrM2S(&msf, &pack);
+    printf("\nmm2s first: 0x");
+    for (int i = 0; i < HEAD_SIZE; ++i)
+    {
+        printf("%02x", pack[i]);
+    }
+    printf("\n\n");
 
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
+    // TODO:
     revert_char(&pack, HEAD_SIZE, &pack_r);
 
     int index = 0;
 
-    p = p + index;
-    memcpy(p, pack_r, HEAD_SIZE);
+    p_tx_buf = p_tx_buf + index;
+    memcpy(p_tx_buf, pack_r, HEAD_SIZE);
 
     index += HEAD_SIZE;
-    p = p + index;
+    p_tx_buf = p_tx_buf + index;
 
-    int datalen_inbit = msf.ldpcNum * LDPC_K; // 501284
-    // 7832
-    int datalen_inbyte = (datalen_inbit % 8 != 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
-    init_tx_data(p, datalen_inbyte);
+    int datalen_inbit = msf.ldpcNum * LDPC_K; // 501248
+    printf("datalen_inbit:%d\n", datalen_inbit);
+    // 62656
+    int datalen_inbyte = (datalen_inbit % 8 == 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
+    printf("datalen_inbyte:%d\n", datalen_inbyte);
+    init_tx_data(p_tx_buf, datalen_inbyte);
 
     rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, true);
     if (rc < 0)
@@ -228,18 +251,19 @@ static void clean_rx_data(char *rx_buf, size_t rx_buf_size)
     // Fill in any leftover bytes if it's not aligned
     for (i = 0; i < rx_buf_size % sizeof(long); i++)
     {
-        rx_buf[i] = 0;
+        rx_buf[i + rx_buf_size / sizeof(long)] = 0;
     }
 
     return;
 }
 
-void getInfo(void * rx_buf)
+void getInfo(void *rx_buf)
 {
+    printf("getting info \n");
     // get first word
     long *p_l = rx_buf;
 
-    printf("After trans, data in first word : %016lx \n", *p_l);
+    printf("s2mm After trans, data in first word : %016lx \n", *p_l);
 
     long data_s = *p_l;
     printf("data_S: 0x%lx\n", data_s);
@@ -280,14 +304,25 @@ void getInfo(void * rx_buf)
         int it = 0;
         long *index_l = rx_buf;
         // index_l++;
-        int ct = sf.ldpcnum *LDPC_K/PACK_LEN +1;
+        int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
+        int ct = totalct+100;
         while (ct)
         {
-            printf("now data %d: %016lx \n", it, *index_l);
+            printf("s2mm now data %d: %016lx \n", it, *index_l);
             it++;
             index_l++;
             ct--;
         }
+
+        // it = totalct - 10;
+        // index_l = rx_buf + it;
+        // while (it < totalct + 1000)
+        // {
+        //     printf("s2mm now data %d: %016lx \n", it, *index_l);
+        //     it++;
+        //     index_l++;
+        // }
+        // printf("s2mm now data %d: %016lx \n", it, *index_l);
     }
 }
 
@@ -297,14 +332,43 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     int rc = 0;
 
     // Initialize the buffer region we're going to transmit
-    // before rx anything, data is 1 in long
+    // before rx anything, data is 0 in long
     clean_rx_data(rx_buf, rx_size);
 
-    // Perform the DMA transaction
-    do
+    char *zero_check = rx_buf;
+    int zero_flag = 0;
+    for (int i = 0; i < MAX_SIZE; ++i)
     {
-        rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, true);
-    } while (rc < 0);
+        if (*zero_check != 0)
+        {
+            zero_flag = 1;
+        }
+        zero_check++;
+    }
+
+    if (zero_flag)
+    {
+        printf("rx s2mm error: rx not clean !!!!\n");
+    }
+    else
+    {
+        printf("rx s2mm ok: rx clean !!!!\n");
+    }
+
+    // // Perform the DMA transaction
+    // do
+    // {
+    //     rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, true);
+    // } while (rc < 0);
+
+    // rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, 8*4, true);
+
+    rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, true);
+
+    if (rc < 0)
+    {
+        return rc;
+    }
 
     getInfo(rx_buf);
 
@@ -377,17 +441,20 @@ void *udp_recv(void *args)
         if (rc < 0)
         {
             fail++;
+            printf("mm2s send fail\n");
         }
         else
         {
             ok++;
+            printf("mm2s send success\n");
         }
-        if (total % 50 == 0)
+        if (total % 500 == 0)
         {
-            printf("mm2s total: %d, ok: %d, fail: %d\n", total, ok, fail);
+            printf("\n<<<<<<<<<<<<<<<<<<\n\nmm2s total: %d, ok: %d, fail: %d\n<<<<<<<<<<<<<<<<<<<<\n\n", total, ok, fail);
         }
         // }
-        usleep(10);
+        usleep(1000 * 100);
+        // break;
     }
 
     // close(sock_fd);
@@ -514,7 +581,6 @@ int main(int argc, char **argv)
     while (1)
     {
         totalCount++;
-        printf("s2mm total:%d\n", totalCount);
         rc = s2mm_all_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
         if (rc < 0)
         {
@@ -523,13 +589,12 @@ int main(int argc, char **argv)
         else
         {
             okCount++;
-            printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once! total count: %d\n", okCount);
         }
-        if (totalCount % 5 == 0)
+        if (totalCount % 500 == 0)
         {
-            printf("Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
+            printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(1000 * 10);
+        usleep(1000 * 1);
     }
 
     printf("Exiting.\n\n");

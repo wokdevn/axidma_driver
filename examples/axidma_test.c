@@ -537,7 +537,7 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // rx_size -= 20 * sizeof(char);
 
     // for (int i = 0; i < rx_size/sizeof(long); ++i)
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < 20; ++i)
     {
         // int fix = (int)(*index) - i - fixall;
         // if (fix)
@@ -802,21 +802,31 @@ int main(int argc, char **argv)
     // }
     // printf("MM2S transfer test successfully completed!\n");
 
+    int okCount = 0;
+    int failCount = 0;
+    int totalCount = 0;
 
     int cnt = 0;
     while (1)
     {
         // printf("S2MM transfer test: %d>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> \n",cnt);
         // S2MM test
+        totalCount++;
         rc = s2mm_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
         if (rc < 0)
         {
-            // goto free_rx_buf;
-            printf("????????????????????trans fail once\n");
+            failCount++;
         }
-        printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once!\n");
-        // usleep(1000 * 50);
-        cnt++;
+        else
+        {
+            okCount++;
+            printf("!!!!!!!!!!!!!!!!S2MM transfer test completed once! total count: %d\n", okCount);
+        }
+        if (totalCount % 500 == 0)
+        {
+            printf("Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
+        }
+        usleep(1000 * 1);
     }
 
     // Time the DMA eingine

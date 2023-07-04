@@ -18,8 +18,10 @@ const static int LONG_BIT_COUNT = CHAR_BIT * sizeof(long);
 void print_b(void *pointer,size_t size);
 void revert_char(char* data,int len,char* r_data);
 char *itobs(long n, char *ps);
-//convert long to char
+//convert one long to eight char
 char* long2char(long num,char *str);
+
+//convert char array to bit, each bit in a char
 char* char2bit(char* pack,int len,char* bitpack);
 char* bit2char(char* bitpack,int len, char* pack);
 
