@@ -46,7 +46,7 @@
 
 // The default timeout for DMA is 10 seconds
 // #define AXIDMA_DMA_TIMEOUT      10000
-#define AXIDMA_DMA_TIMEOUT      1
+#define AXIDMA_DMA_TIMEOUT      100
 
 // A convenient structure to pass between prep and start transfer functions
 struct axidma_transfer {

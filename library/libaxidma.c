@@ -330,7 +330,7 @@ void axidma_destroy(axidma_dev_t dev)
 // Returns an array of all the available AXI DMA transmit channels
 const array_t *axidma_get_dma_tx(axidma_dev_t dev)
 {
-    return &dev->dma_tx_chans;
+    return &(dev->dma_tx_chans);
 }
 
 // Returns an array of all the available AXI DMA receive channels
@@ -470,6 +470,8 @@ int axidma_oneway_transfer(axidma_dev_t dev, int channel, void *buf,
         // fprintf(stderr,"error::,,%s,,\n",strerror(errno));
         return rc;
     }
+
+    dev->channels[channel].callback(channel,NULL);
 
     return 0;
 }

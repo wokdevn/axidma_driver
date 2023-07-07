@@ -65,6 +65,16 @@ struct udpmm2s
     struct axidma_video_frame *tx_frame;
 };
 
+void txcall()
+{
+    printf("tx finished\n");
+}
+
+void rxcall()
+{
+    printf("rx finished\n");
+}
+
 /*
  * init arguments
  */
@@ -145,25 +155,26 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // data: all 0
     clean_tx_data(tx_buf, MAX_SIZE);
 
-    char *zero_check = tx_buf;
-    int zero_flag = 0;
-    for (int i = 0; i < MAX_SIZE; ++i)
-    {
-        if (*zero_check != 0)
-        {
-            zero_flag = 1;
-        }
-        zero_check++;
-    }
+    // //check if cleaned
+    // char *zero_check = tx_buf;
+    // int zero_flag = 0;
+    // for (int i = 0; i < MAX_SIZE; ++i)
+    // {
+    //     if (*zero_check != 0)
+    //     {
+    //         zero_flag = 1;
+    //     }
+    //     zero_check++;
+    // }
 
-    if (zero_flag)
-    {
-        printf("tx mm2s error: not clean !!!!\n");
-    }
-    else
-    {
-        printf("tx mm2s ok: clean\n");
-    }
+    // if (zero_flag)
+    // {
+    //     printf("tx mm2s error: not clean !!!!\n");
+    // }
+    // else
+    // {
+    //     printf("tx mm2s ok: clean\n");
+    // }
 
     // printf("One way transfer!\n");
     // Perform the DMA transaction
@@ -205,6 +216,7 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, true);
     if (rc < 0)
     {
+        perror("mm2s one way error:");
         return rc;
     }
 
@@ -301,11 +313,13 @@ void getInfo(void *rx_buf)
 
         printf("head:%d\n", j);
 
+        //printf data
         int it = 0;
         long *index_l = rx_buf;
         // index_l++;
         int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
-        int ct = totalct+100;
+        // int ct = totalct + 100;
+        int ct = 10;
         while (ct)
         {
             printf("s2mm now data %d: %016lx \n", it, *index_l);
@@ -335,25 +349,26 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // before rx anything, data is 0 in long
     clean_rx_data(rx_buf, rx_size);
 
-    char *zero_check = rx_buf;
-    int zero_flag = 0;
-    for (int i = 0; i < MAX_SIZE; ++i)
-    {
-        if (*zero_check != 0)
-        {
-            zero_flag = 1;
-        }
-        zero_check++;
-    }
+    ////check if cleaned
+    // char *zero_check = rx_buf;
+    // int zero_flag = 0;
+    // for (int i = 0; i < MAX_SIZE; ++i)
+    // {
+    //     if (*zero_check != 0)
+    //     {
+    //         zero_flag = 1;
+    //     }
+    //     zero_check++;
+    // }
 
-    if (zero_flag)
-    {
-        printf("rx s2mm error: rx not clean !!!!\n");
-    }
-    else
-    {
-        printf("rx s2mm ok: rx clean !!!!\n");
-    }
+    // if (zero_flag)
+    // {
+    //     printf("rx s2mm error: rx not clean !!!!\n");
+    // }
+    // else
+    // {
+    //     printf("rx s2mm ok: rx clean !!!!\n");
+    // }
 
     // // Perform the DMA transaction
     // do
@@ -453,7 +468,7 @@ void *udp_recv(void *args)
             printf("\n<<<<<<<<<<<<<<<<<<\n\nmm2s total: %d, ok: %d, fail: %d\n<<<<<<<<<<<<<<<<<<<<\n\n", total, ok, fail);
         }
         // }
-        usleep(1000 * 100);
+        usleep(1000000);
         // break;
     }
 
@@ -552,6 +567,14 @@ int main(int argc, char **argv)
     printf("Using transmit channel %d and receive channel %d.\n", tx_channel,
            rx_channel);
 
+    // test call back
+    char* p_txcall;
+    printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n",tx_channel);
+    printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n",rx_channel);
+    axidma_set_callback(axidma_dev, tx_channel, txcall,NULL);
+    char* p_rxcall;
+    axidma_set_callback(axidma_dev, rx_channel, rxcall,NULL);
+
     /*
     udp receive not used for now, just use the mm2s part to send data
     */
@@ -584,17 +607,19 @@ int main(int argc, char **argv)
         rc = s2mm_all_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
         if (rc < 0)
         {
+            perror("s2mm fail:");
             failCount++;
         }
         else
         {
+            printf("s2mm success\n");
             okCount++;
         }
         if (totalCount % 500 == 0)
         {
             printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(1000 * 1);
+        usleep(1000000);
     }
 
     printf("Exiting.\n\n");
