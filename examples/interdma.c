@@ -192,9 +192,9 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     msf.ldpcNum = 89;
     msf.Mb = 7;
     msf.modulation = QPSK;
-    unsigned char pack[HEAD_SIZE] = {0};
-    unsigned char pack_r[HEAD_SIZE] = {0};
-    constrM2S(&msf, &pack);
+    char pack[HEAD_SIZE] = {0};
+    char pack_r[HEAD_SIZE] = {0};
+    constrM2S(&msf, (char*)(&pack));
     printf("\nmm2s first: 0x");
     for (int i = 0; i < HEAD_SIZE; ++i)
     {
@@ -205,7 +205,7 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
     // TODO:
-    revert_char(&pack, HEAD_SIZE, &pack_r);
+    revert_char((char*)(&pack), HEAD_SIZE, (char*)(&pack_r));
 
     int index = 0;
 
@@ -290,13 +290,13 @@ void getInfo(void *rx_buf, int *lcnum)
     printf("data_S: 0x%lx\n", data_s);
     print_b(&data_s, sizeof(data_s));
 
-    unsigned char charpack_s[8] = {0};
+    char charpack_s[8] = {0};
     long2char(data_s, charpack_s);
 
     int j = getHeadS2M(charpack_s);
     if (j == 1234)
     {
-        unsigned char bitpack_s[64] = {0};
+        char bitpack_s[64] = {0};
         char2bit(charpack_s, 8, bitpack_s);
 
         s2mm_f sf;
@@ -419,7 +419,7 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     memcpy(processdata, rx_buf, MAX_SIZE);
 
     pthread_t tids;
-    int ret = pthread_create(&tids, NULL, process_s2mm, processdata);
+    int ret = pthread_create(&tids, NULL, (void*)process_s2mm, processdata);
     if (ret != 0)
     {
         printf("pthread_create error: error_code=%d", ret);
@@ -559,11 +559,11 @@ int main(int argc, char **argv)
 
     printf("AXI DMA Trans Parameters:\n");
     printf("\tTRANS_SIZE:%d \n", TRANS_SIZE);
-    printf("\tTx size:%d \n", tx_size);
+    printf("\tTx size:%ld \n", tx_size);
     if (!use_vdma)
     {
-        printf("\tTransmit Buffer Size: %d Byte\n", (tx_size));
-        printf("\tReceive Buffer Size: %d Byte\n", (rx_size));
+        printf("\tTransmit Buffer Size: %ld Byte\n", (tx_size));
+        printf("\tReceive Buffer Size: %ld Byte\n", (rx_size));
     }
 
     // Initialize the AXI DMA device
@@ -627,7 +627,7 @@ int main(int argc, char **argv)
     *(p_txcall+2) = 0;
     printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n", tx_channel);
     printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n", rx_channel);
-    axidma_set_callback(axidma_dev, tx_channel, txcall, p_txcall);
+    axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, p_txcall);
     // char *p_rxcall;
     // axidma_set_callback(axidma_dev, rx_channel, rxcall, NULL);
 

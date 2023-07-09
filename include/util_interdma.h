@@ -13,7 +13,7 @@
 #define reversebit(x,y) x^=(1<<y);
 #define getbit(x,y) ((x>>y)&1)
 
-const static int LONG_BIT_COUNT = CHAR_BIT * sizeof(long);
+static const int LONG_BIT_COUNT = CHAR_BIT * sizeof(long);
 
 void print_b(void *pointer,size_t size);
 void revert_char(char* data,int len,char* r_data);

@@ -99,7 +99,7 @@ int getHeadM2S(char *data)
 
 void getParamM2S(struct MM2S_First *mm2s_first, char *data)
 {
-    unsigned char *r_data = (char *)malloc(sizeof(char) * PACK_LEN + 1);
+    char *r_data = (char *)malloc(sizeof(char) * PACK_LEN + 1);
     revert_char(data, PACK_LEN, r_data);
 
     int temp = 0;
@@ -144,7 +144,7 @@ int getHeadS2M(char *data)
 
 void getParamS2M(s2mm_f *s2mm_first, char *data)
 {
-    unsigned char *r_data = (char *)malloc(sizeof(char) * PACK_LEN + 1);
+    char *r_data = (char *)malloc(sizeof(char) * PACK_LEN + 1);
     revert_char(data, PACK_LEN, r_data);
 
     int temp = 0;
@@ -204,7 +204,7 @@ char *constrM2S(struct MM2S_First *mm2s_first, char *data)
     int mb = mm2s_first->Mb;
     int ldpcnum = mm2s_first->ldpcNum;
 
-    unsigned char pack[64] = {0};
+    char pack[64] = {0};
     pack[60] = 1;
     pack[57] = 1;
     pack[53] = 1;
@@ -241,8 +241,8 @@ char *constrM2S(struct MM2S_First *mm2s_first, char *data)
         pack[i] = (ldpcnum >> (i - 11)) & 0x01;
     }
 
-    unsigned char *r_data = (char *)malloc(sizeof(char) * PACK_LEN + 1);
-    revert_char(&pack, sizeof(char) * PACK_LEN, r_data);
+    char *r_data = (char *)malloc(sizeof(char) * PACK_LEN + 1);
+    revert_char((char *)(&pack), sizeof(char) * PACK_LEN, r_data);
 
     bit2char(r_data, 8, data);
 

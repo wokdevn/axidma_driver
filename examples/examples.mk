@@ -32,7 +32,8 @@ UTIL_FILES = util.c udpclient.c util_interdma.c#udpserver.c
 UTIL = $(addprefix $(UTIL_DIR)/,$(UTIL_FILES))
 
 # The compiler flags used to compile the examples
-EXAMPLES_CFLAGS = $(GLOBAL_CFLAGS)
+EXAMPLES_CFLAGS = $(GLOBAL_CFLAGS)   -Wno-unused-variable  \
+				-Wno-unused-parameter -Wno-unused-but-set-variable
 
 # Set the example executables to link against the AXI DMA shared library in
 # the outputs directory
