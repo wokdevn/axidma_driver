@@ -57,8 +57,10 @@
 
 #define USLEEP 1000000
 
-int mm2sflag;
-int s2mmflag;
+pthread_mutex_t mutex_mm2s = PTHREAD_MUTEX_INITIALIZER; // unlock ed
+pthread_cond_t flag_mm2s = PTHREAD_COND_INITIALIZER;    // set ed status
+pthread_mutex_t mutex_s2mm = PTHREAD_MUTEX_INITIALIZER; // unlock ed
+pthread_cond_t flag_s2mm = PTHREAD_COND_INITIALIZER;    // set ed status
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -70,18 +72,23 @@ struct udpmm2s
     struct axidma_video_frame *tx_frame;
 };
 
-void txcall(int channelid,char* p)
+void txcall(int channelid, char *p)
 {
-    printf("channel i:%d\n",channelid);
-    mm2sflag = 1;
-    printf("%c\n",*(p+1));
-    printf("tx finished\n");
+    printf("tx channel id:%d\n", channelid);
+    printf("tx call\n");
+    pthread_mutex_lock(&mutex_mm2s);
+    printf("enter tx call\n");
+    pthread_mutex_unlock(&mutex_mm2s);
+    pthread_cond_signal(&flag_mm2s);
 }
 
 void rxcall()
 {
-    s2mmflag = 1;
-    printf("rx finished\n");
+    printf("rx call\n");
+    pthread_mutex_lock(&mutex_s2mm);
+    printf("enter rx call\n");
+    pthread_mutex_unlock(&mutex_s2mm);
+    pthread_cond_signal(&flag_s2mm);
 }
 
 /*
@@ -194,7 +201,7 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     msf.modulation = QPSK;
     char pack[HEAD_SIZE] = {0};
     char pack_r[HEAD_SIZE] = {0};
-    constrM2S(&msf, (char*)(&pack));
+    constrM2S(&msf, (char *)(&pack));
     printf("\nmm2s first: 0x");
     for (int i = 0; i < HEAD_SIZE; ++i)
     {
@@ -205,7 +212,7 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
     // TODO:
-    revert_char((char*)(&pack), HEAD_SIZE, (char*)(&pack_r));
+    revert_char((char *)(&pack), HEAD_SIZE, (char *)(&pack_r));
 
     int index = 0;
 
@@ -222,12 +229,18 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     printf("datalen_inbyte:%d\n", datalen_inbyte);
     init_tx_data(p_tx_buf, datalen_inbyte);
 
-    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
-    if (rc < 0)
-    {
-        perror("mm2s one way error:");
-        return rc;
-    }
+    // rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
+    // if (rc < 0)
+    // {
+    //     perror("mm2s one way error:");
+    //     return rc;
+    // }
+
+    axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
+    pthread_mutex_lock(&mutex_s2mm);
+    pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
+    printf("mm2s get flag\n");
+    pthread_mutex_unlock(&mutex_s2mm);
 
     // int bitnum = msf.ldpcNum * LDPC_K;
     // int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
@@ -408,23 +421,32 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
 
     // rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, 8*4, true);
 
-    rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, false);
+    // //no mutex no intr
+    // rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, false);
 
-    if (rc < 0)
-    {
-        return rc;
-    }
+    // if (rc < 0)
+    // {
+    //     return rc;
+    // }
 
+    axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, false);
+
+    pthread_mutex_lock(&mutex_s2mm);
+    pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
+
+    printf("s2mm get flag\n");
     unsigned char *processdata = (unsigned char *)malloc(MAX_SIZE * sizeof(char));
     memcpy(processdata, rx_buf, MAX_SIZE);
 
     pthread_t tids;
-    int ret = pthread_create(&tids, NULL, (void*)process_s2mm, processdata);
+    int ret = pthread_create(&tids, NULL, (void *)process_s2mm, processdata);
     if (ret != 0)
     {
         printf("pthread_create error: error_code=%d", ret);
         return -1;
     }
+
+    pthread_mutex_unlock(&mutex_s2mm);
 
     // int ldpcnum;
 
@@ -434,7 +456,7 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // unsigned int sleeptime = ldpcnum * utimedata;
     // usleep(sleeptime);
 
-    return rc;
+    return 0;
 }
 
 void *udp_recv(void *args)
@@ -497,6 +519,7 @@ void *udp_recv(void *args)
 
         // if (recv_num > 0)
         // {
+
         total += 1;
         int rc = mm2s_all_test(arg_thread1->axidma_dev, arg_thread1->tx_channel, arg_thread1->tx_buf, arg_thread1->tx_size,
                                arg_thread1->tx_frame);
@@ -521,6 +544,7 @@ void *udp_recv(void *args)
             printf(">>>>>>mm2s ok %d\n", ok);
             break;
         }
+
         // break;
     }
 
@@ -623,13 +647,13 @@ int main(int argc, char **argv)
     char *p_txcall;
     p_txcall = (char *)malloc(4);
     *p_txcall = 'a';
-    *(p_txcall+1) = 'b';
-    *(p_txcall+2) = 0;
+    *(p_txcall + 1) = 'b';
+    *(p_txcall + 2) = 0;
     printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n", tx_channel);
     printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n", rx_channel);
     axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, p_txcall);
-    // char *p_rxcall;
-    // axidma_set_callback(axidma_dev, rx_channel, rxcall, NULL);
+    char *p_rxcall;
+    axidma_set_callback(axidma_dev, rx_channel, (void *)rxcall, NULL);
 
     /*
     udp receive not used for now, just use the mm2s part to send data
@@ -675,15 +699,16 @@ int main(int argc, char **argv)
         {
             printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(USLEEP);
+        // usleep(USLEEP);
         printf(">>>>>>>>>>>>>>>>s2mm ok count %d\n", okCount);
-        if(totalCount == 50){
+        if (totalCount == 50)
+        {
             break;
         }
     }
 
-    while(1){
-
+    while (1)
+    {
     }
 
     free(p_txcall);
