@@ -55,6 +55,11 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
+#define USLEEP 1000000
+
+int mm2sflag;
+int s2mmflag;
+
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
 {
@@ -65,13 +70,17 @@ struct udpmm2s
     struct axidma_video_frame *tx_frame;
 };
 
-void txcall()
+void txcall(int channelid,char* p)
 {
+    printf("channel i:%d\n",channelid);
+    mm2sflag = 1;
+    printf("%c\n",*(p+1));
     printf("tx finished\n");
 }
 
 void rxcall()
 {
+    s2mmflag = 1;
     printf("rx finished\n");
 }
 
@@ -213,7 +222,7 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     printf("datalen_inbyte:%d\n", datalen_inbyte);
     init_tx_data(p_tx_buf, datalen_inbyte);
 
-    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, true);
+    rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
     if (rc < 0)
     {
         perror("mm2s one way error:");
@@ -269,7 +278,7 @@ static void clean_rx_data(char *rx_buf, size_t rx_buf_size)
     return;
 }
 
-void getInfo(void *rx_buf)
+void getInfo(void *rx_buf, int *lcnum)
 {
     printf("getting info \n");
     // get first word
@@ -301,6 +310,8 @@ void getInfo(void *rx_buf)
         printf("mb:%d\n", sf.Mb);
         printf("ldpcnum:%d\n", sf.ldpcnum);
 
+        *lcnum = sf.ldpcnum;
+
         int bitnum = LDPC_K * sf.ldpcnum;
         int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
 
@@ -313,19 +324,26 @@ void getInfo(void *rx_buf)
 
         printf("head:%d\n", j);
 
-        //printf data
+        // printf data
         int it = 0;
         long *index_l = rx_buf;
         // index_l++;
         int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
-        // int ct = totalct + 100;
-        int ct = 10;
+        int ct = totalct + 10;
+        // int ct = 10;
         while (ct)
         {
             printf("s2mm now data %d: %016lx \n", it, *index_l);
             it++;
             index_l++;
             ct--;
+            if (it == 10)
+            {
+                int skip = 7822;
+                it += skip;
+                index_l += skip;
+                ct -= skip;
+            }
         }
 
         // it = totalct - 10;
@@ -338,6 +356,18 @@ void getInfo(void *rx_buf)
         // }
         // printf("s2mm now data %d: %016lx \n", it, *index_l);
     }
+}
+
+void process_s2mm(void *args)
+{
+    unsigned char *processdata;
+    processdata = (unsigned char *)args;
+
+    int ldpcnum;
+
+    getInfo(processdata, &ldpcnum);
+
+    free(processdata);
 }
 
 static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
@@ -378,14 +408,31 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
 
     // rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, 8*4, true);
 
-    rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, true);
+    rc = axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, false);
 
     if (rc < 0)
     {
         return rc;
     }
 
-    getInfo(rx_buf);
+    unsigned char *processdata = (unsigned char *)malloc(MAX_SIZE * sizeof(char));
+    memcpy(processdata, rx_buf, MAX_SIZE);
+
+    pthread_t tids;
+    int ret = pthread_create(&tids, NULL, process_s2mm, processdata);
+    if (ret != 0)
+    {
+        printf("pthread_create error: error_code=%d", ret);
+        return -1;
+    }
+
+    // int ldpcnum;
+
+    // getInfo(rx_buf, &ldpcnum);
+
+    // double utimedata = 500 / 512;
+    // unsigned int sleeptime = ldpcnum * utimedata;
+    // usleep(sleeptime);
 
     return rc;
 }
@@ -468,7 +515,12 @@ void *udp_recv(void *args)
             printf("\n<<<<<<<<<<<<<<<<<<\n\nmm2s total: %d, ok: %d, fail: %d\n<<<<<<<<<<<<<<<<<<<<\n\n", total, ok, fail);
         }
         // }
-        usleep(1000000);
+        usleep(USLEEP);
+        if (ok == 50)
+        {
+            printf(">>>>>>mm2s ok %d\n", ok);
+            break;
+        }
         // break;
     }
 
@@ -568,12 +620,16 @@ int main(int argc, char **argv)
            rx_channel);
 
     // test call back
-    char* p_txcall;
-    printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n",tx_channel);
-    printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n",rx_channel);
-    axidma_set_callback(axidma_dev, tx_channel, txcall,NULL);
-    char* p_rxcall;
-    axidma_set_callback(axidma_dev, rx_channel, rxcall,NULL);
+    char *p_txcall;
+    p_txcall = (char *)malloc(4);
+    *p_txcall = 'a';
+    *(p_txcall+1) = 'b';
+    *(p_txcall+2) = 0;
+    printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n", tx_channel);
+    printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n", rx_channel);
+    axidma_set_callback(axidma_dev, tx_channel, txcall, p_txcall);
+    // char *p_rxcall;
+    // axidma_set_callback(axidma_dev, rx_channel, rxcall, NULL);
 
     /*
     udp receive not used for now, just use the mm2s part to send data
@@ -619,9 +675,18 @@ int main(int argc, char **argv)
         {
             printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(1000000);
+        usleep(USLEEP);
+        printf(">>>>>>>>>>>>>>>>s2mm ok count %d\n", okCount);
+        if(totalCount == 50){
+            break;
+        }
     }
 
+    while(1){
+
+    }
+
+    free(p_txcall);
     printf("Exiting.\n\n");
 
 free_rx_buf:

@@ -46,7 +46,7 @@
 
 // The default timeout for DMA is 10 seconds
 // #define AXIDMA_DMA_TIMEOUT      10000
-#define AXIDMA_DMA_TIMEOUT      100
+#define AXIDMA_DMA_TIMEOUT      1000
 
 // A convenient structure to pass between prep and start transfer functions
 struct axidma_transfer {
@@ -295,7 +295,7 @@ static int axidma_start_transfer(struct axidma_chan *chan,
     // Wait for the completion timeout or the DMA to complete
     if (dma_tfr->wait) {
         // axidma_info("timeout setting\n");
-        timeout = msecs_to_jiffies(AXIDMA_DMA_TIMEOUT);
+        timeout = usecs_to_jiffies(AXIDMA_DMA_TIMEOUT);
         time_remain = wait_for_completion_timeout(dma_comp, timeout);
         status = dma_async_is_tx_complete(chan->chan, dma_cookie, NULL, NULL);
         // axidma_info("after status\n");
