@@ -55,7 +55,7 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1000000
+#define USLEEP 10
 
 pthread_mutex_t mutex_mm2s = PTHREAD_MUTEX_INITIALIZER; // unlock ed
 pthread_cond_t flag_mm2s = PTHREAD_COND_INITIALIZER;    // set ed status
@@ -72,23 +72,26 @@ struct udpmm2s
     struct axidma_video_frame *tx_frame;
 };
 
+int txnum = 0;
 void txcall(int channelid, char *p)
 {
     printf("tx channel id:%d\n", channelid);
-    printf("tx call\n");
     pthread_mutex_lock(&mutex_mm2s);
-    printf("enter tx call\n");
-    pthread_mutex_unlock(&mutex_mm2s);
+    txnum++;
+    printf("enter tx call, tx num:%d\n", txnum);
     pthread_cond_signal(&flag_mm2s);
+    pthread_mutex_unlock(&mutex_mm2s);
 }
 
+int rxnum = 0;
 void rxcall()
 {
     printf("rx call\n");
     pthread_mutex_lock(&mutex_s2mm);
-    printf("enter rx call\n");
-    pthread_mutex_unlock(&mutex_s2mm);
+    rxnum++;
+    printf("enter rx call, rxnum:%d\n", rxnum);
     pthread_cond_signal(&flag_s2mm);
+    pthread_mutex_unlock(&mutex_s2mm);
 }
 
 /*
@@ -202,12 +205,13 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     char pack[HEAD_SIZE] = {0};
     char pack_r[HEAD_SIZE] = {0};
     constrM2S(&msf, (char *)(&pack));
-    printf("\nmm2s first: 0x");
-    for (int i = 0; i < HEAD_SIZE; ++i)
-    {
-        printf("%02x", pack[i]);
-    }
-    printf("\n\n");
+
+    // printf("\nmm2s first: 0x");
+    // for (int i = 0; i < HEAD_SIZE; ++i)
+    // {
+    //     printf("%02x", pack[i]);
+    // }
+    // printf("\n\n");
 
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
@@ -223,10 +227,12 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     p_tx_buf = p_tx_buf + index;
 
     int datalen_inbit = msf.ldpcNum * LDPC_K; // 501248
-    printf("datalen_inbit:%d\n", datalen_inbit);
+    // printf("datalen_inbit:%d\n", datalen_inbit);
+
     // 62656
     int datalen_inbyte = (datalen_inbit % 8 == 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
-    printf("datalen_inbyte:%d\n", datalen_inbyte);
+    // printf("datalen_inbyte:%d\n", datalen_inbyte);
+
     init_tx_data(p_tx_buf, datalen_inbyte);
 
     // rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
@@ -237,10 +243,10 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // }
 
     axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
-    pthread_mutex_lock(&mutex_s2mm);
-    pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
+    pthread_mutex_lock(&mutex_mm2s);
+    pthread_cond_wait(&flag_mm2s, &mutex_mm2s);
     printf("mm2s get flag\n");
-    pthread_mutex_unlock(&mutex_s2mm);
+    pthread_mutex_unlock(&mutex_mm2s);
 
     // int bitnum = msf.ldpcNum * LDPC_K;
     // int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
@@ -293,15 +299,15 @@ static void clean_rx_data(char *rx_buf, size_t rx_buf_size)
 
 void getInfo(void *rx_buf, int *lcnum)
 {
-    printf("getting info \n");
+    printf("S2MM INFO: \n");
     // get first word
     long *p_l = rx_buf;
 
     printf("s2mm After trans, data in first word : %016lx \n", *p_l);
 
     long data_s = *p_l;
-    printf("data_S: 0x%lx\n", data_s);
-    print_b(&data_s, sizeof(data_s));
+    // printf("data_S: 0x%lx\n", data_s);
+    // print_b(&data_s, sizeof(data_s));
 
     char charpack_s[8] = {0};
     long2char(data_s, charpack_s);
@@ -335,14 +341,14 @@ void getInfo(void *rx_buf, int *lcnum)
         //     rc = axidma_oneway_transfer(dev, rx_channel, rx_buf + HEAD_SIZE, wordnum * 8, true);
         // } while (rc < 0);
 
-        printf("head:%d\n", j);
+        // printf("head:%d\n", j);
 
         // printf data
         int it = 0;
         long *index_l = rx_buf;
         // index_l++;
         int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
-        int ct = totalct + 10;
+        int ct = totalct + 5;
         // int ct = 10;
         while (ct)
         {
@@ -350,9 +356,9 @@ void getInfo(void *rx_buf, int *lcnum)
             it++;
             index_l++;
             ct--;
-            if (it == 10)
+            if (it == 5)
             {
-                int skip = 7822;
+                int skip = 7812;
                 it += skip;
                 index_l += skip;
                 ct -= skip;
@@ -523,28 +529,27 @@ void *udp_recv(void *args)
         total += 1;
         int rc = mm2s_all_test(arg_thread1->axidma_dev, arg_thread1->tx_channel, arg_thread1->tx_buf, arg_thread1->tx_size,
                                arg_thread1->tx_frame);
-        if (rc < 0)
-        {
-            fail++;
-            printf("mm2s send fail\n");
-        }
-        else
-        {
-            ok++;
-            printf("mm2s send success\n");
-        }
-        if (total % 500 == 0)
-        {
-            printf("\n<<<<<<<<<<<<<<<<<<\n\nmm2s total: %d, ok: %d, fail: %d\n<<<<<<<<<<<<<<<<<<<<\n\n", total, ok, fail);
-        }
+        ////useless cause return value will be 0
+        // if (rc < 0)
+        // {
+        //     fail++;
+        //     printf("mm2s send fail\n");
         // }
-        usleep(USLEEP);
-        if (ok == 50)
-        {
-            printf(">>>>>>mm2s ok %d\n", ok);
-            break;
-        }
+        // else
+        // {
 
+        ok++;
+        printf("mm2s send success: %d\n", ok);
+
+        // }
+
+        // if (total % 500 == 0)
+        // {
+        //     printf("\n<<<<<<<<<<<<<<<<<<\n\nmm2s total: %d, ok: %d, fail: %d\n<<<<<<<<<<<<<<<<<<<<\n\n", total, ok, fail);
+        // }
+        // }
+
+        usleep(USLEEP);
         // break;
     }
 
@@ -680,31 +685,42 @@ int main(int argc, char **argv)
     int failCount = 0;
     int totalCount = 0;
 
+    struct timeval tv_begin, tv_end,tresult;
+    gettimeofday(&tv_begin, NULL);
+    printf("tv_begin_usec:%ld\n", tv_begin.tv_usec);
+
     printf("s2mm start\n");
     while (1)
     {
         totalCount++;
         rc = s2mm_all_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
-        if (rc < 0)
-        {
-            perror("s2mm fail:");
-            failCount++;
-        }
-        else
-        {
-            printf("s2mm success\n");
-            okCount++;
-        }
-        if (totalCount % 500 == 0)
-        {
-            printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
-        }
-        // usleep(USLEEP);
+        // useless when intr mod, cause return value will always be 0
+        //  if (rc < 0)
+        //  {
+        //      perror("s2mm fail:");
+        //      failCount++;
+        //  }
+        //  else
+        //  {
+        //  printf("s2mm success\n");
+        okCount++;
+        // }
+        // if (totalCount % 500 == 0)
+        // {
+        //     printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
+        // }
+        usleep(USLEEP);
+
         printf(">>>>>>>>>>>>>>>>s2mm ok count %d\n", okCount);
-        if (totalCount == 50)
-        {
-            break;
-        }
+        gettimeofday(&tv_end, NULL);
+
+        timersub(&tv_end, &tv_begin, &tresult);
+
+        double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000; //  精确到秒
+
+        double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
+
+        printf("timeuse in ms: %f \n", timeuse_ms);
     }
 
     while (1)

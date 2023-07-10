@@ -192,8 +192,9 @@ static void axidma_callback(int signal, siginfo_t *siginfo, void *context)
     int channel_id;
     dma_channel_t *chan;
 
-    printf("siginfo->si_int:%d\n",siginfo->si_int);
-    printf("axidma_dev.num_channels:%d\n",axidma_dev.num_channels);
+    // printf("siginfo->si_int:%d\n",siginfo->si_int);
+    // printf("axidma_dev.num_channels:%d\n",axidma_dev.num_channels);
+
     assert(0 <= siginfo->si_int && siginfo->si_int <= axidma_dev.num_channels);
 
     // Silence the compiler
@@ -202,10 +203,11 @@ static void axidma_callback(int signal, siginfo_t *siginfo, void *context)
 
     // If the user defined a callback for a given channel, invoke it
     channel_id = siginfo->si_int;
+
     chan = &axidma_dev.channels[channel_id];
-    printf(">0001>>>>>>>>>>>>entering callback check\n");
+    // printf(">0001>>>>>>>>>>>>entering callback check\n");
     if (chan->callback != NULL) {
-        printf("channel %d callback not null\n",channel_id);
+        // printf("channel %d callback not null\n",channel_id);
         chan->callback(channel_id, chan->user_data);
     }
 
