@@ -482,40 +482,42 @@ int parse_args(int argc, char **argv)
 int main(int argc, char **argv)
 {
     // usleep: micro seconds
-    // int i;
-    // while (scanf("%d", &i))
-    // {
-    //     switch (i)
-    //     {
-    //     case 1:
-    //         printf("export test\n");
-    //         test_all_export();
-    //         break;
-    //     case 2:
-    //         printf("outdir test\n");
-    //         test_all_out_dir();
-    //         break;
-    //     case 3:
-    //         printf("out high test\n");
-    //         test_all_high();
-    //         break;
-    //     case 4:
-    //         printf("out low test\n");
-    //         test_all_low();
-    //         break;
-    //     case 5:
-    //         printf("indir test\n");
-    //         test_all_in_dir();
-    //         break;
-    //     case 6:
-    //         printf("get value test\n");
-    //         test_all_in_value();
-    //         break;
+    int i;
+    while (scanf("%d", &i))
+    {
+        switch (i)
+        {
+        case 1:
+            printf("export test\n");
+            test_all_export();
+            break;
+        case 2:
+            printf("outdir test\n");
+            test_all_out_dir();
+            break;
+        case 3:
+            printf("out high test\n");
+            test_all_high();
+            break;
+        case 4:
+            printf("out low test\n");
+            test_all_low();
+            break;
+        case 5:
+            printf("indir test\n");
+            test_all_in_dir();
+            break;
+        case 6:
+            printf("get value test\n");
+            test_all_in_value();
+            break;
 
-    //     default:
-    //         break;
-    //     }
-    // }
+        default:
+            break;
+        }
+    }
 
-    return parse_args(argc,argv);
+    return 0;
+
+    // return parse_args(argc,argv);
 }
