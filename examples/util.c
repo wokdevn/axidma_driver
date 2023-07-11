@@ -19,6 +19,7 @@
 #include <sys/types.h>          // Types for open()
 #include <unistd.h>             // Read() and write()
 #include <errno.h>              // Error codes
+#include <time.h>
 
 /*----------------------------------------------------------------------------
  * Command-Line Parsing Utilities
@@ -174,4 +175,17 @@ char* Int2String(int num,char *str)//10进制
     }
 
     return str;//返回转换后的值
+}
+
+//[small,big]
+int randBtw(int small,int big){
+    if(small > big){
+        big = small + big;
+        small = big - small;
+        big = big - small;
+    }
+    int rt;
+    srand((unsigned)time(NULL));
+    rt = rand() % (big-small+1) + small;
+    return rt;
 }

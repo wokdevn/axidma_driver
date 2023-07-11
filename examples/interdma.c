@@ -55,12 +55,14 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 10
+#define USLEEP 1000000
 
 pthread_mutex_t mutex_mm2s = PTHREAD_MUTEX_INITIALIZER; // unlock ed
 pthread_cond_t flag_mm2s = PTHREAD_COND_INITIALIZER;    // set ed status
 pthread_mutex_t mutex_s2mm = PTHREAD_MUTEX_INITIALIZER; // unlock ed
 pthread_cond_t flag_s2mm = PTHREAD_COND_INITIALIZER;    // set ed status
+
+int random_flag = 2;
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -75,7 +77,7 @@ struct udpmm2s
 int txnum = 0;
 void txcall(int channelid, char *p)
 {
-    printf("tx channel id:%d\n", channelid);
+    printf("\ntx channel id:%d\n", channelid);
     pthread_mutex_lock(&mutex_mm2s);
     txnum++;
     printf("enter tx call, tx num:%d\n", txnum);
@@ -163,6 +165,54 @@ static void clean_tx_data(char *tx_buf, size_t tx_buf_size)
     return;
 }
 
+static int random_mm2s(mm2s_f *msf)
+{
+    // mod:BPSK,QPSK,16QAM,64QAM
+    // MB:0~63
+    // LDPCNUM:0~362
+
+    // int ldpc_num = randBtw(0, 362);
+    int mb = randBtw(0, 63);
+    int modu = randBtw(0, 3);
+
+    int modu_cal;
+    switch (modu)
+    {
+    case BPSK:
+        modu_cal = 1;
+        break;
+    case QPSK:
+        modu_cal = 2;
+        break;
+    case QAM16:
+        modu_cal = 4;
+        break;
+    case QAM64:
+        modu_cal = 6;
+        break;
+    default:
+        break;
+    }
+    int cal_u = DATA_MAX * modu_cal;
+    int cal_d = DATA_TR(mb);
+
+    int ldpc_num;
+    if (cal_u % cal_d == 0)
+    {
+        ldpc_num = cal_u / cal_d;
+    }
+    else
+    {
+        ldpc_num = cal_u / cal_d + 1;
+    }
+
+    msf->ldpcNum = ldpc_num;
+    msf->Mb = mb;
+    msf->modulation = modu;
+
+    return 0;
+}
+
 static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
                          int tx_size, struct axidma_video_frame *tx_frame)
 {
@@ -199,19 +249,38 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // Perform the DMA transaction
 
     mm2s_f msf;
-    msf.ldpcNum = 89;
-    msf.Mb = 7;
-    msf.modulation = QPSK;
+    if (random_flag == 0)
+    {
+        random_mm2s(&msf);
+    }
+    else if (random_flag == 1)
+    {
+        msf.ldpcNum = 16;
+        msf.Mb = 63;
+        msf.modulation = BPSK;
+    }
+    else
+    {
+        msf.ldpcNum = 362;
+        msf.Mb = 0;
+        msf.modulation = QAM64;
+    }
+    // msf.ldpcNum = 89;
+    // msf.Mb = 7;
+    // msf.modulation = QPSK;
+    printf("mm2s ldpc num:%d\n", msf.ldpcNum);
+    printf("mm2s mb:%d\n", msf.Mb);
+    printf("mm2s modu:%d", msf.modulation);
     char pack[HEAD_SIZE] = {0};
     char pack_r[HEAD_SIZE] = {0};
     constrM2S(&msf, (char *)(&pack));
 
-    // printf("\nmm2s first: 0x");
-    // for (int i = 0; i < HEAD_SIZE; ++i)
-    // {
-    //     printf("%02x", pack[i]);
-    // }
-    // printf("\n\n");
+    printf("\nmm2s first: 0x");
+    for (int i = 0; i < HEAD_SIZE; ++i)
+    {
+        printf("%02x", pack[i]);
+    }
+    printf("\n");
 
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
@@ -227,13 +296,35 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     p_tx_buf = p_tx_buf + index;
 
     int datalen_inbit = msf.ldpcNum * LDPC_K; // 501248
-    // printf("datalen_inbit:%d\n", datalen_inbit);
+    printf("datalen_inbit:%d\n", datalen_inbit);
 
     // 62656
     int datalen_inbyte = (datalen_inbit % 8 == 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
-    // printf("datalen_inbyte:%d\n", datalen_inbyte);
+    printf("datalen_inbyte:%d\n", datalen_inbyte);
 
     init_tx_data(p_tx_buf, datalen_inbyte);
+
+    // // show inited data
+    // int it = 0;
+    // long *index_l = tx_buf;
+    // // index_l++;
+    // int totalct = (datalen_inbyte%8==0)?(datalen_inbyte/8):(datalen_inbyte/8+1);
+    // int ct = totalct;
+    // // int ct = 10;
+    // while (ct)
+    // {
+    //     printf("mm2s now data %d: %016lx \n", it, *index_l);
+    //     it++;
+    //     index_l++;
+    //     ct--;
+    //     if (it == 5)
+    //     {
+    //         int skip = totalct-30;
+    //         it += skip;
+    //         index_l += skip;
+    //         ct -= skip;
+    //     }
+    // }
 
     // rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
     // if (rc < 0)
@@ -306,8 +397,8 @@ void getInfo(void *rx_buf, int *lcnum)
     printf("s2mm After trans, data in first word : %016lx \n", *p_l);
 
     long data_s = *p_l;
-    // printf("data_S: 0x%lx\n", data_s);
-    // print_b(&data_s, sizeof(data_s));
+    printf("data_S: 0x%lx\n", data_s);
+    print_b(&data_s, sizeof(data_s));
 
     char charpack_s[8] = {0};
     long2char(data_s, charpack_s);
@@ -358,7 +449,7 @@ void getInfo(void *rx_buf, int *lcnum)
             ct--;
             if (it == 5)
             {
-                int skip = 7812;
+                int skip = totalct - 30;
                 it += skip;
                 index_l += skip;
                 ct -= skip;
@@ -527,9 +618,17 @@ void *udp_recv(void *args)
         // {
 
         total += 1;
+        if (total == 2)
+        {
+            random_flag--;
+        }
+        if (total == 3)
+        {
+            random_flag--;
+        }
         int rc = mm2s_all_test(arg_thread1->axidma_dev, arg_thread1->tx_channel, arg_thread1->tx_buf, arg_thread1->tx_size,
                                arg_thread1->tx_frame);
-        ////useless cause return value will be 0
+        // // useless cause return value will be 0
         // if (rc < 0)
         // {
         //     fail++;
@@ -538,9 +637,8 @@ void *udp_recv(void *args)
         // else
         // {
 
-        ok++;
-        printf("mm2s send success: %d\n", ok);
-
+        //     ok++;
+        printf("mm2s send count: %d\n", total);
         // }
 
         // if (total % 500 == 0)
@@ -685,25 +783,23 @@ int main(int argc, char **argv)
     int failCount = 0;
     int totalCount = 0;
 
-    struct timeval tv_begin, tv_end,tresult;
+    struct timeval tv_begin, tv_end, tresult;
     gettimeofday(&tv_begin, NULL);
-    printf("tv_begin_usec:%ld\n", tv_begin.tv_usec);
 
     printf("s2mm start\n");
     while (1)
     {
         totalCount++;
         rc = s2mm_all_test(axidma_dev, rx_channel, rx_buf, rx_size, rx_frame);
-        // useless when intr mod, cause return value will always be 0
-        //  if (rc < 0)
-        //  {
-        //      perror("s2mm fail:");
-        //      failCount++;
-        //  }
-        //  else
-        //  {
-        //  printf("s2mm success\n");
-        okCount++;
+        // //useless when intr mod, cause return value will always be 0 if (rc < 0)
+        // {
+        //     perror("s2mm fail:");
+        //     failCount++;
+        // }
+        // else
+        // {
+        //     printf("s2mm success\n");
+        //     okCount++;
         // }
         // if (totalCount % 500 == 0)
         // {
@@ -711,7 +807,7 @@ int main(int argc, char **argv)
         // }
         usleep(USLEEP);
 
-        printf(">>>>>>>>>>>>>>>>s2mm ok count %d\n", okCount);
+        printf(">>>>>>>>>>>>>>>>s2mm count %d\n", totalCount);
         gettimeofday(&tv_end, NULL);
 
         timersub(&tv_end, &tv_begin, &tresult);

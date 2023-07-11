@@ -24,4 +24,7 @@ int robust_write(int fd, char *buf, int buf_size);
 
 char* Int2String(int num,char *str);
 
+//[small,big]
+int randBtw(int small,int big);
+
 #endif /* UTIL_H_ */
