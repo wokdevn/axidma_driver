@@ -19,6 +19,7 @@
 #define CONTINUOUSE_TRANSCEIVE_SWITCH 436
 #define RECEIVE_RESET 435
 #define COASTAS_LOOP 434
+#define EVM_REQ_FLAG 433
 #define IMPULSE_REQUEST 432
 
 // #define SYSFS_GPIO_DIR(x) "/sys/class/gpio/gpio" x "/direction"
@@ -150,11 +151,6 @@ int test_all()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (export_gpio(i))
         {
             printf("export failure : port %d\n", i);
@@ -200,11 +196,6 @@ int test_all_export()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (export_gpio(i))
         {
             printf("export failure : port %d\n", i);
@@ -220,11 +211,6 @@ int test_all_out_dir()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (setdir(i, SYSFS_GPIO_DIR_OUT))
         {
             printf("set out failure : port %d\n", i);
@@ -240,11 +226,6 @@ int test_all_high()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (setvalue(i, SYSFS_GPIO_VAL_H))
         {
             printf("set high failure : port %d\n", i);
@@ -260,11 +241,6 @@ int test_all_low()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (setvalue(i, SYSFS_GPIO_VAL_L))
         {
             printf("set low failure : port %d\n", i);
@@ -280,11 +256,6 @@ int test_all_in_dir()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (setdir(i, SYSFS_GPIO_DIR_IN))
         {
             printf("set in failure : port %d\n", i);
@@ -300,11 +271,6 @@ int test_all_in_value()
 {
     for (int i = 432; i <= 439; ++i)
     {
-        if (i == 433)
-        {
-            continue;
-        }
-
         if (getvalue(i))
         {
             printf("get value failure : port %d\n", i);
@@ -342,6 +308,9 @@ int checkport(int port)
     case IMPULSE_REQUEST:
         return EXIT_SUCCESS;
         break;
+    case EVM_REQ_FLAG:
+        return EXIT_SUCCESS;
+        break;
 
     default:
         printf("wrong port\n");
@@ -350,8 +319,10 @@ int checkport(int port)
     }
 }
 
-int print_usage(int help){
+int print_usage(int help)
+{
     printf("nothing to recommend\n");
+    return 0;
 }
 
 int parse_args(int argc, char **argv)
@@ -426,7 +397,7 @@ int parse_args(int argc, char **argv)
             {
                 printf("set dir out fail\n");
             }
-            if(setvalue(int_arg,SYSFS_GPIO_VAL_H))
+            if (setvalue(int_arg, SYSFS_GPIO_VAL_H))
             {
                 printf("set dir out OK, set value h fail\n");
             }
@@ -446,7 +417,7 @@ int parse_args(int argc, char **argv)
             {
                 printf("set dir out fail\n");
             }
-            if(setvalue(int_arg,SYSFS_GPIO_VAL_L))
+            if (setvalue(int_arg, SYSFS_GPIO_VAL_L))
             {
                 printf("set dir out OK, set value l fail\n");
             }
@@ -466,7 +437,7 @@ int parse_args(int argc, char **argv)
             {
                 printf("set dir in fail\n");
             }
-            if(getvalue(int_arg))
+            if (getvalue(int_arg))
             {
                 printf("set dir in OK, get value fail\n");
             }
@@ -477,47 +448,48 @@ int parse_args(int argc, char **argv)
             return -EINVAL;
         }
     }
+    return 0;
 }
 
 int main(int argc, char **argv)
 {
-    // usleep: micro seconds
-    int i;
-    while (scanf("%d", &i))
-    {
-        switch (i)
-        {
-        case 1:
-            printf("export test\n");
-            test_all_export();
-            break;
-        case 2:
-            printf("outdir test\n");
-            test_all_out_dir();
-            break;
-        case 3:
-            printf("out high test\n");
-            test_all_high();
-            break;
-        case 4:
-            printf("out low test\n");
-            test_all_low();
-            break;
-        case 5:
-            printf("indir test\n");
-            test_all_in_dir();
-            break;
-        case 6:
-            printf("get value test\n");
-            test_all_in_value();
-            break;
+    // // usleep: micro seconds
+    // int i;
+    // while (scanf("%d", &i))
+    // {
+    //     switch (i)
+    //     {
+    //     case 1:
+    //         printf("export test\n");
+    //         test_all_export();
+    //         break;
+    //     case 2:
+    //         printf("outdir test\n");
+    //         test_all_out_dir();
+    //         break;
+    //     case 3:
+    //         printf("out high test\n");
+    //         test_all_high();
+    //         break;
+    //     case 4:
+    //         printf("out low test\n");
+    //         test_all_low();
+    //         break;
+    //     case 5:
+    //         printf("indir test\n");
+    //         test_all_in_dir();
+    //         break;
+    //     case 6:
+    //         printf("get value test\n");
+    //         test_all_in_value();
+    //         break;
 
-        default:
-            break;
-        }
-    }
+    //     default:
+    //         break;
+    //     }
+    // }
 
-    return 0;
+    // return 0;
 
-    // return parse_args(argc,argv);
+    return parse_args(argc,argv);
 }

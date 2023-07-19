@@ -57,6 +57,19 @@
 
 #define USLEEP 1000000
 
+#define TR_DATA_TEST
+#define TEST_MB 7
+#define TEST_MODU QAM16
+#define MB_MAX 63
+#define EVM_COUNT 900
+#define PRINT_EVM
+#define PRINT_DATA
+// #define TEST_EDGE
+// #define SKIP
+// #define PRINT_MM2S_INIT
+
+pthread_mutex_t print_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t mutex_mm2s = PTHREAD_MUTEX_INITIALIZER; // unlock ed
 pthread_cond_t flag_mm2s = PTHREAD_COND_INITIALIZER;    // set ed status
 pthread_mutex_t mutex_s2mm = PTHREAD_MUTEX_INITIALIZER; // unlock ed
@@ -172,8 +185,15 @@ static int random_mm2s(mm2s_f *msf)
     // LDPCNUM:0~362
 
     // int ldpc_num = randBtw(0, 362);
-    int mb = randBtw(0, 63);
-    int modu = randBtw(0, 3);
+    // int mb = randBtw(0, MB_MAX);
+    // int modu = randBtw(1, 3);//bpsk useless, 1, 2, 3 to QPSK 16QAM 64QAM
+
+    int mb, modu;
+
+#ifdef TR_DATA_TEST
+    mb = TEST_MB;
+    modu = TEST_MODU;
+#endif
 
     int modu_cal;
     switch (modu)
@@ -196,15 +216,12 @@ static int random_mm2s(mm2s_f *msf)
     int cal_u = DATA_MAX * modu_cal;
     int cal_d = DATA_TR(mb);
 
+    printf("mm2s cal, DATA_MAX : %d, modu_cal : %d, mb : %d, cal_d : %d\n",
+           DATA_MAX, modu_cal, mb, cal_d);
+
     int ldpc_num;
-    if (cal_u % cal_d == 0)
-    {
-        ldpc_num = cal_u / cal_d;
-    }
-    else
-    {
-        ldpc_num = cal_u / cal_d + 1;
-    }
+
+    ldpc_num = cal_u / cal_d;
 
     msf->ldpcNum = ldpc_num;
     msf->Mb = mb;
@@ -249,6 +266,8 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     // Perform the DMA transaction
 
     mm2s_f msf;
+
+#ifdef TEST_EDGE
     if (random_flag == 0)
     {
         random_mm2s(&msf);
@@ -265,6 +284,9 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
         msf.Mb = 0;
         msf.modulation = QAM64;
     }
+#else
+    random_mm2s(&msf);
+#endif
     // msf.ldpcNum = 89;
     // msf.Mb = 7;
     // msf.modulation = QPSK;
@@ -302,29 +324,32 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     int datalen_inbyte = (datalen_inbit % 8 == 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
     printf("datalen_inbyte:%d\n", datalen_inbyte);
 
+    printf("size of long:%ld\n", sizeof(long));
     init_tx_data(p_tx_buf, datalen_inbyte);
 
-    // // show inited data
-    // int it = 0;
-    // long *index_l = tx_buf;
-    // // index_l++;
-    // int totalct = (datalen_inbyte%8==0)?(datalen_inbyte/8):(datalen_inbyte/8+1);
-    // int ct = totalct;
-    // // int ct = 10;
-    // while (ct)
-    // {
-    //     printf("mm2s now data %d: %016lx \n", it, *index_l);
-    //     it++;
-    //     index_l++;
-    //     ct--;
-    //     if (it == 5)
-    //     {
-    //         int skip = totalct-30;
-    //         it += skip;
-    //         index_l += skip;
-    //         ct -= skip;
-    //     }
-    // }
+#ifdef PRINT_MM2S_INIT
+    // show inited data
+    int it = 0;
+    long *index_l = tx_buf;
+    // index_l++;
+    int totalct = (datalen_inbyte % 8 == 0) ? (datalen_inbyte / 8) : (datalen_inbyte / 8 + 1);
+    int ct = totalct;
+    // int ct = 10;
+    while (ct)
+    {
+        printf("mm2s now data %d: %016lx \n", it, *index_l);
+        it++;
+        index_l++;
+        ct--;
+        // if (it == 5)
+        // {
+        //     int skip = totalct-30;
+        //     it += skip;
+        //     index_l += skip;
+        //     ct -= skip;
+        // }
+    }
+#endif
 
     // rc = axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
     // if (rc < 0)
@@ -404,6 +429,40 @@ void getInfo(void *rx_buf, int *lcnum)
     long2char(data_s, charpack_s);
 
     int j = getHeadS2M(charpack_s);
+
+#ifdef PRINT_EVM
+    if (j == 1212)
+    {
+        int it = 0;
+        long *index_l = rx_buf;
+
+        int totalct = EVM_COUNT * 2;
+        int ct = totalct + 5;
+        // int ct = 10;
+
+        pthread_mutex_lock(&print_mutex);
+
+        while (ct)
+        {
+            printf("s2mm evm data %d: %016lx \n", it, *index_l);
+            it++;
+            index_l++;
+            ct--;
+#ifdef SKIP
+            if (it == 5)
+            {
+                int skip = totalct - 30;
+                it += skip;
+                index_l += skip;
+                ct -= skip;
+            }
+#endif
+        }
+
+        pthread_mutex_unlock(&print_mutex);
+    }
+#endif
+
     if (j == 1234)
     {
         char bitpack_s[64] = {0};
@@ -434,6 +493,7 @@ void getInfo(void *rx_buf, int *lcnum)
 
         // printf("head:%d\n", j);
 
+#ifdef PRINT_DATA
         // printf data
         int it = 0;
         long *index_l = rx_buf;
@@ -441,12 +501,15 @@ void getInfo(void *rx_buf, int *lcnum)
         int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
         int ct = totalct + 5;
         // int ct = 10;
+
+        pthread_mutex_lock(&print_mutex);
         while (ct)
         {
             printf("s2mm now data %d: %016lx \n", it, *index_l);
             it++;
             index_l++;
             ct--;
+#ifdef SKIP
             if (it == 5)
             {
                 int skip = totalct - 30;
@@ -454,7 +517,9 @@ void getInfo(void *rx_buf, int *lcnum)
                 index_l += skip;
                 ct -= skip;
             }
+#endif
         }
+        pthread_mutex_unlock(&print_mutex);
 
         // it = totalct - 10;
         // index_l = rx_buf + it;
@@ -465,6 +530,8 @@ void getInfo(void *rx_buf, int *lcnum)
         //     index_l++;
         // }
         // printf("s2mm now data %d: %016lx \n", it, *index_l);
+
+#endif
     }
 }
 
