@@ -54,7 +54,7 @@
 #define IMAGE_SIZE (1920 * 1080)
 #define DEFAULT_TRANSFER_SIZE ((int)(IMAGE_SIZE * sizeof(int)))
 
-#define TRANS_NUM 4*1320+50
+#define TRANS_NUM 4*1320
 #define DEFAULT_TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
 // The default number of transfers to benchmark
@@ -536,8 +536,8 @@ static int s2mm_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // cut the data, last some are 0
     // rx_size -= 20 * sizeof(char);
 
-    // for (int i = 0; i < rx_size/sizeof(long); ++i)
-    for (int i = 0; i < 20; ++i)
+    for (int i = 0; i < rx_size/sizeof(long); ++i)
+    // for (int i = 0; i < 20; ++i)
     {
         // int fix = (int)(*index) - i - fixall;
         // if (fix)
