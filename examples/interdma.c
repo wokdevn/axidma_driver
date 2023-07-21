@@ -59,11 +59,9 @@
 
 #define TR_DATA_TEST
 #define TEST_MB 7
-#define TEST_MODU QAM16
+#define TEST_MODU QAM64
 #define MB_MAX 63
-#define EVM_COUNT 900
-#define PRINT_EVM
-#define PRINT_DATA
+#define EVM_COUNT 300
 // #define TEST_EDGE
 // #define SKIP
 // #define PRINT_MM2S_INIT
@@ -76,6 +74,9 @@ pthread_mutex_t mutex_s2mm = PTHREAD_MUTEX_INITIALIZER; // unlock ed
 pthread_cond_t flag_s2mm = PTHREAD_COND_INITIALIZER;    // set ed status
 
 int random_flag = 2;
+
+int test_mb_p, test_modu_p;
+int print_evm_p = 0, print_data_p = 0;
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -191,8 +192,8 @@ static int random_mm2s(mm2s_f *msf)
     int mb, modu;
 
 #ifdef TR_DATA_TEST
-    mb = TEST_MB;
-    modu = TEST_MODU;
+    mb = test_mb_p;
+    modu = test_modu_p;
 #endif
 
     int modu_cal;
@@ -430,38 +431,39 @@ void getInfo(void *rx_buf, int *lcnum)
 
     int j = getHeadS2M(charpack_s);
 
-#ifdef PRINT_EVM
-    if (j == 1212)
+    if (print_evm_p)
     {
-        int it = 0;
-        long *index_l = rx_buf;
-
-        int totalct = EVM_COUNT * 2;
-        int ct = totalct + 5;
-        // int ct = 10;
-
-        pthread_mutex_lock(&print_mutex);
-
-        while (ct)
+        if (j == 1212)
         {
-            printf("s2mm evm data %d: %016lx \n", it, *index_l);
-            it++;
-            index_l++;
-            ct--;
-#ifdef SKIP
-            if (it == 5)
-            {
-                int skip = totalct - 30;
-                it += skip;
-                index_l += skip;
-                ct -= skip;
-            }
-#endif
-        }
+            int it = 0;
+            long *index_l = rx_buf;
 
-        pthread_mutex_unlock(&print_mutex);
-    }
+            int totalct = EVM_COUNT;
+            int ct = totalct + 5;
+            // int ct = 10;
+
+            pthread_mutex_lock(&print_mutex);
+
+            while (ct)
+            {
+                printf("s2mm evm data %d: %016lx \n", it, *index_l);
+                it++;
+                index_l++;
+                ct--;
+#ifdef SKIP
+                if (it == 5)
+                {
+                    int skip = totalct - 30;
+                    it += skip;
+                    index_l += skip;
+                    ct -= skip;
+                }
 #endif
+            }
+
+            pthread_mutex_unlock(&print_mutex);
+        }
+    }
 
     if (j == 1234)
     {
@@ -493,45 +495,45 @@ void getInfo(void *rx_buf, int *lcnum)
 
         // printf("head:%d\n", j);
 
-#ifdef PRINT_DATA
-        // printf data
-        int it = 0;
-        long *index_l = rx_buf;
-        // index_l++;
-        int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
-        int ct = totalct + 5;
-        // int ct = 10;
-
-        pthread_mutex_lock(&print_mutex);
-        while (ct)
+        if (print_data_p)
         {
-            printf("s2mm now data %d: %016lx \n", it, *index_l);
-            it++;
-            index_l++;
-            ct--;
-#ifdef SKIP
-            if (it == 5)
+            // printf data
+            int it = 0;
+            long *index_l = rx_buf;
+            // index_l++;
+            int totalct = sf.ldpcnum * LDPC_K / PACK_LEN + 1;
+            int ct = totalct + 5;
+            // int ct = 10;
+
+            pthread_mutex_lock(&print_mutex);
+            while (ct)
             {
-                int skip = totalct - 30;
-                it += skip;
-                index_l += skip;
-                ct -= skip;
+                printf("s2mm now data %d: %016lx \n", it, *index_l);
+                it++;
+                index_l++;
+                ct--;
+#ifdef SKIP
+                if (it == 5)
+                {
+                    int skip = totalct - 30;
+                    it += skip;
+                    index_l += skip;
+                    ct -= skip;
+                }
+#endif
             }
-#endif
+            pthread_mutex_unlock(&print_mutex);
+
+            // it = totalct - 10;
+            // index_l = rx_buf + it;
+            // while (it < totalct + 1000)
+            // {
+            //     printf("s2mm now data %d: %016lx \n", it, *index_l);
+            //     it++;
+            //     index_l++;
+            // }
+            // printf("s2mm now data %d: %016lx \n", it, *index_l);
         }
-        pthread_mutex_unlock(&print_mutex);
-
-        // it = totalct - 10;
-        // index_l = rx_buf + it;
-        // while (it < totalct + 1000)
-        // {
-        //     printf("s2mm now data %d: %016lx \n", it, *index_l);
-        //     it++;
-        //     index_l++;
-        // }
-        // printf("s2mm now data %d: %016lx \n", it, *index_l);
-
-#endif
     }
 }
 
@@ -723,6 +725,50 @@ void *udp_recv(void *args)
     return 0;
 }
 
+static void print_usage(int help)
+{
+    printf("Get Parameter Error\n");
+}
+
+static int parse_args(int argc, char **argv)
+{
+    char option;
+    int int_arg;
+
+    while ((option = getopt(argc, argv, "b:m:ed")) != (char)-1)
+    {
+        switch (option)
+        {
+        case 'b':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            test_mb_p = int_arg;
+            break;
+        case 'm':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            test_modu_p = int_arg;
+            break;
+        case 'e':
+            print_evm_p = 1;
+            break;
+        case 'd':
+            print_data_p = 1;
+            break;
+        default:
+            print_usage(false);
+            return -EINVAL;
+        }
+    }
+    return 0;
+}
+
 /*----------------------------------------------------------------------------
  * Main Function
  *----------------------------------------------------------------------------*/
@@ -740,6 +786,13 @@ int main(int argc, char **argv)
     checkLSB();
 
     printf("Enter main v5.0 two devices connect\n");
+
+    if (parse_args(argc, argv) < 0)
+    {
+        printf("Wrong param\n");
+        rc = 1;
+        goto ret;
+    }
 
     // Check if the user overrided the default transfer size and number
     // just pay attention to size
