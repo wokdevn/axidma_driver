@@ -826,7 +826,7 @@ int main(int argc, char **argv)
         {
             printf("Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         }
-        usleep(1000 * 1);
+        // usleep(1000 * 1);
     }
 
     // Time the DMA eingine
