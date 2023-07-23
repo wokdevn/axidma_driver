@@ -55,7 +55,7 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1000
+#define USLEEP 1000000
 
 #define TR_DATA_TEST
 #define TEST_MB 7
@@ -562,56 +562,56 @@ void process_s2mm(void *args)
 
     printf("udp send start v2.0>>>>>>>>>>>>>>>>>>>>>>>\n");
 
-    char onetwo[1320];
-    char threefour[1320];
-    char fivesix[1320];
-    char seveneight[1320];
+    // char onetwo[1320];
+    // char threefour[1320];
+    // char fivesix[1320];
+    // char seveneight[1320];
 
-    char *char_ptr = args;
+    // char *char_ptr = args;
 
-    int j = 0;
-    for (int i = 0; i < TRANS_SIZE; ++i)
-    {
-        if (i < 1320)
-        {
-            onetwo[j] = *char_ptr;
-        }
-        else if (i < 1320 * 2)
-        {
-            threefour[j] = *char_ptr;
-        }
-        else if (i < 1320 * 3)
-        {
-            fivesix[j] = *char_ptr;
-        }
-        else if (i < 1320 * 4)
-        {
-            seveneight[j] = *char_ptr;
-        }
-        j++;
-        char_ptr++;
-        if (j == 1320)
-        {
-            j = 0;
-        }
-    }
-    // printf("before send\n");
+    // int j = 0;
+    // for (int i = 0; i < TRANS_SIZE; ++i)
+    // {
+    //     if (i < 1320)
+    //     {
+    //         onetwo[j] = *char_ptr;
+    //     }
+    //     else if (i < 1320 * 2)
+    //     {
+    //         threefour[j] = *char_ptr;
+    //     }
+    //     else if (i < 1320 * 3)
+    //     {
+    //         fivesix[j] = *char_ptr;
+    //     }
+    //     else if (i < 1320 * 4)
+    //     {
+    //         seveneight[j] = *char_ptr;
+    //     }
+    //     j++;
+    //     char_ptr++;
+    //     if (j == 1320)
+    //     {
+    //         j = 0;
+    //     }
+    // }
+    // // printf("before send\n");
 
-    long *it_l = (long *)onetwo;
-    // printf("1:%lx",*it);
-    udp_send(onetwo, 1320);
+    // long *it_l = (long *)onetwo;
+    // // printf("1:%lx",*it);
+    // udp_send(onetwo, 1320);
 
-    it_l = (long *)threefour;
-    // printf("2:%lx",*it);
-    udp_send(threefour, 1320);
+    // it_l = (long *)threefour;
+    // // printf("2:%lx",*it);
+    // udp_send(threefour, 1320);
 
-    it_l = (long *)fivesix;
-    // printf("3:%lx",*it);
-    udp_send(fivesix, 1320);
+    // it_l = (long *)fivesix;
+    // // printf("3:%lx",*it);
+    // udp_send(fivesix, 1320);
 
-    it_l = (long *)seveneight;
-    // printf("4:%lx",*it);
-    udp_send(seveneight, 1320);
+    // it_l = (long *)seveneight;
+    // // printf("4:%lx",*it);
+    // udp_send(seveneight, 1320);
 }
 
 static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
@@ -623,26 +623,26 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // before rx anything, data is 0 in long
     clean_rx_data(rx_buf, rx_size);
 
-    //check if cleaned
-    char *zero_check = rx_buf;
-    int zero_flag = 0;
-    for (int i = 0; i < rx_size; ++i)
-    {
-        if (*zero_check != 0)
-        {
-            zero_flag = 1;
-        }
-        zero_check++;
-    }
+    // //check if cleaned
+    // char *zero_check = rx_buf;
+    // int zero_flag = 0;
+    // for (int i = 0; i < rx_size; ++i)
+    // {
+    //     if (*zero_check != 0)
+    //     {
+    //         zero_flag = 1;
+    //     }
+    //     zero_check++;
+    // }
 
-    if (zero_flag)
-    {
-        printf("rx s2mm error: rx not clean !!!!\n");
-    }
-    else
-    {
-        printf("rx s2mm ok: rx clean !!!!\n");
-    }
+    // if (zero_flag)
+    // {
+    //     printf("rx s2mm error: rx not clean !!!!\n");
+    // }
+    // else
+    // {
+    //     printf("rx s2mm ok: rx clean !!!!\n");
+    // }
 
     // // Perform the DMA transaction
     // do
@@ -660,13 +660,9 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     //     return rc;
     // }
 
-    printf("s2mm no wait transfer\n");
-    axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, false);
-
-    printf("before lock s2mm\n");
     pthread_mutex_lock(&mutex_s2mm);
-    printf("before wait s2mm\n");
-    pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
+    axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
+    // pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
 
     printf("s2mm get flag\n");
     unsigned char *processdata = (unsigned char *)malloc(rx_size * sizeof(char));
@@ -881,16 +877,9 @@ int main(int argc, char **argv)
     printf("Using transmit channel %d and receive channel %d.\n", tx_channel,
            rx_channel);
 
-    // test call back
-    char *p_txcall;
-    p_txcall = (char *)malloc(4);
-    *p_txcall = 'a';
-    *(p_txcall + 1) = 'b';
-    *(p_txcall + 2) = 0;
     printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n", tx_channel);
     printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n", rx_channel);
-    axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, p_txcall);
-    char *p_rxcall;
+    axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, NULL);
     axidma_set_callback(axidma_dev, rx_channel, (void *)rxcall, NULL);
 
     /*
@@ -958,7 +947,6 @@ int main(int argc, char **argv)
     {
     }
 
-    free(p_txcall);
     printf("Exiting.\n\n");
 
 free_rx_buf:

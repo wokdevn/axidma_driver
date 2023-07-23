@@ -595,9 +595,8 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     //     return rc;
     // }
 
-    axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, false);
-
     pthread_mutex_lock(&mutex_s2mm);
+    axidma_oneway_transfer(dev, rx_channel, rx_buf, MAX_SIZE, false);
     pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
 
     printf("s2mm get flag\n");
