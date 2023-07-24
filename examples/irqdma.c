@@ -28,7 +28,7 @@
 #define HEAD_SIZE 8
 
 // The size of data to send per transfer, in byte
-#define TRANS_NUM 4 * 1320
+#define TRANS_NUM 4 * 1320 * 2
 #define TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
 #define MAX_DATA_NUM (LDPC_K * ((2 << 8) - 1) / (8 * TRANS_NUM))
@@ -55,7 +55,7 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1000000
+#define USLEEP 1
 
 #define TR_DATA_TEST
 #define TEST_MB 7
@@ -661,8 +661,8 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     // }
 
     pthread_mutex_lock(&mutex_s2mm);
-    axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, true);
-    // pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
+    axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, false);
+    pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
 
     printf("s2mm get flag\n");
     unsigned char *processdata = (unsigned char *)malloc(rx_size * sizeof(char));

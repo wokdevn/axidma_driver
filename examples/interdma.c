@@ -21,6 +21,7 @@
 #include "udpclient.h"
 #include "interdma.h"
 #include "util_interdma.h"
+#include "mgpio.h"
 
 /*----------------------------------------------------------------------------
  * Internal Definitons
@@ -55,7 +56,7 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1000000
+#define USLEEP 1
 
 #define TR_DATA_TEST
 #define TEST_MB 7
@@ -359,8 +360,8 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     //     return rc;
     // }
 
-    axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
     pthread_mutex_lock(&mutex_mm2s);
+    axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
     pthread_cond_wait(&flag_mm2s, &mutex_mm2s);
     printf("mm2s get flag\n");
     pthread_mutex_unlock(&mutex_mm2s);
@@ -435,6 +436,10 @@ void getInfo(void *rx_buf, int *lcnum)
     {
         if (j == 1212)
         {
+            //gpio rst
+            setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
+            setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_L);
+
             int it = 0;
             long *index_l = rx_buf;
 
@@ -715,7 +720,7 @@ void *udp_recv(void *args)
         // }
         // }
 
-        usleep(USLEEP);
+        usleep(USLEEP * 1000000);
         // break;
     }
 
@@ -768,6 +773,16 @@ static int parse_args(int argc, char **argv)
     return 0;
 }
 
+void *gpiocontrol()
+{
+    while (1)
+    {
+        usleep(USLEEP * 3 * 1000000);
+        setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
+        setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_H);
+    }
+}
+
 /*----------------------------------------------------------------------------
  * Main Function
  *----------------------------------------------------------------------------*/
@@ -785,6 +800,9 @@ int main(int argc, char **argv)
     checkLSB();
 
     printf("Enter main v5.0 two devices connect\n");
+
+    // gpio
+    export_gpio(EVM_REQ_FLAG);
 
     if (parse_args(argc, argv) < 0)
     {
@@ -895,6 +913,14 @@ int main(int argc, char **argv)
         goto free_rx_buf;
     }
 
+    pthread_t gpio_cid;
+    ret = pthread_create(&gpio_cid, NULL, gpiocontrol, NULL);
+    if (ret != 0)
+    {
+        printf("gpio pthread_create error: error_code=%d", ret);
+        goto free_rx_buf;
+    }
+
     // printf("udp send test once\n");
     // udp_send("111", 1320);
 
@@ -924,7 +950,7 @@ int main(int argc, char **argv)
         // {
         //     printf("s2mm Total count:%d, Ok count: %d, fail count: %d\n", totalCount, okCount, failCount);
         // }
-        usleep(USLEEP);
+        usleep(USLEEP * 1);
 
         printf(">>>>>>>>>>>>>>>>s2mm count %d\n", totalCount);
         gettimeofday(&tv_end, NULL);

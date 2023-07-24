@@ -2,6 +2,8 @@
 // Created by shun on 2023/6/15.
 //
 
+#include "mgpio.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,28 +12,6 @@
 #include <errno.h>
 
 #include "util.h"
-
-#define SYSFS_GPIO_EXPORT "/sys/class/gpio/export"
-
-#define SECOND_PULSE_ENABLE 439
-#define TIME_PULSE_ENALBE 438
-#define TRANSCEIVE_RESET 437
-#define CONTINUOUSE_TRANSCEIVE_SWITCH 436
-#define RECEIVE_RESET 435
-#define COASTAS_LOOP 434
-#define EVM_REQ_FLAG 433
-#define IMPULSE_REQUEST 432
-
-// #define SYSFS_GPIO_DIR(x) "/sys/class/gpio/gpio" x "/direction"
-#define SYSFS_GPIO_DIR_OUT 0
-#define SYSFS_GPIO_DIR_IN 1
-
-// #define SYSFS_GPIO_VAL(x) "/sys/class/gpio/gpio" x "/value"
-#define SYSFS_GPIO_VAL_H 1
-#define SYSFS_GPIO_VAL_L 0
-
-#define true 1
-#define false 0
 
 int export_gpio(int port)
 {
@@ -319,13 +299,13 @@ int checkport(int port)
     }
 }
 
-int print_usage(int help)
+int print_usage_g(int help)
 {
     printf("nothing to recommend\n");
     return 0;
 }
 
-int parse_args(int argc, char **argv)
+int parse_args_g(int argc, char **argv)
 {
     char option;
     int int_arg;
@@ -337,12 +317,12 @@ int parse_args(int argc, char **argv)
         case 'e':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -EINVAL;
             }
             if (checkport(int_arg))
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -ENODEV;
             }
             if (export_gpio(int_arg))
@@ -353,12 +333,12 @@ int parse_args(int argc, char **argv)
         case 'o':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -EINVAL;
             }
             if (checkport(int_arg))
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -ENODEV;
             }
             if (setdir(int_arg, SYSFS_GPIO_DIR_OUT))
@@ -369,12 +349,12 @@ int parse_args(int argc, char **argv)
         case 'i':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -EINVAL;
             }
             if (checkport(int_arg))
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -ENODEV;
             }
             if (setdir(int_arg, SYSFS_GPIO_DIR_IN))
@@ -385,12 +365,12 @@ int parse_args(int argc, char **argv)
         case 'h':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -EINVAL;
             }
             if (checkport(int_arg))
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -ENODEV;
             }
             if (setdir(int_arg, SYSFS_GPIO_DIR_OUT))
@@ -405,12 +385,12 @@ int parse_args(int argc, char **argv)
         case 'l':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -EINVAL;
             }
             if (checkport(int_arg))
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -ENODEV;
             }
             if (setdir(int_arg, SYSFS_GPIO_DIR_OUT))
@@ -425,12 +405,12 @@ int parse_args(int argc, char **argv)
         case 'v':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -EINVAL;
             }
             if (checkport(int_arg))
             {
-                print_usage(false);
+                print_usage_g(false);
                 return -ENODEV;
             }
             if (setdir(int_arg, SYSFS_GPIO_DIR_IN))
@@ -444,14 +424,14 @@ int parse_args(int argc, char **argv)
             break;
 
         default:
-            print_usage(false);
+            print_usage_g(false);
             return -EINVAL;
         }
     }
     return 0;
 }
 
-int main(int argc, char **argv)
+int main_g(int argc, char **argv)
 {
     // // usleep: micro seconds
     // int i;
@@ -491,5 +471,5 @@ int main(int argc, char **argv)
 
     // return 0;
 
-    return parse_args(argc,argv);
+    return parse_args_g(argc,argv);
 }
