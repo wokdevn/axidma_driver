@@ -77,7 +77,7 @@ pthread_cond_t flag_s2mm = PTHREAD_COND_INITIALIZER;    // set ed status
 int random_flag = 2;
 
 int test_mb_p, test_modu_p;
-int print_evm_p = 0, print_data_p = 0;
+int print_evm_p = 0, print_data_p = 0, gpio_ch = 0;
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -436,7 +436,7 @@ void getInfo(void *rx_buf, int *lcnum)
     {
         if (j == 1212)
         {
-            //gpio rst
+            // gpio rst
             setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
             setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_L);
 
@@ -739,7 +739,7 @@ static int parse_args(int argc, char **argv)
     char option;
     int int_arg;
 
-    while ((option = getopt(argc, argv, "b:m:ed")) != (char)-1)
+    while ((option = getopt(argc, argv, "b:m:edg")) != (char)-1)
     {
         switch (option)
         {
@@ -765,6 +765,9 @@ static int parse_args(int argc, char **argv)
         case 'd':
             print_data_p = 1;
             break;
+        case 'g':
+            gpio_ch = 1;
+            break;
         default:
             print_usage(false);
             return -EINVAL;
@@ -778,8 +781,11 @@ void *gpiocontrol()
     while (1)
     {
         usleep(USLEEP * 3 * 1000000);
-        setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
-        setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_H);
+        if (gpio_ch)
+        {
+            setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
+            setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_H);
+        }
     }
 }
 
