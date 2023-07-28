@@ -56,7 +56,7 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1
+#define USLEEP 1000000
 
 #define TR_DATA_TEST
 #define TEST_MB 7
@@ -74,10 +74,14 @@ pthread_cond_t flag_mm2s = PTHREAD_COND_INITIALIZER;    // set ed status
 pthread_mutex_t mutex_s2mm = PTHREAD_MUTEX_INITIALIZER; // unlock ed
 pthread_cond_t flag_s2mm = PTHREAD_COND_INITIALIZER;    // set ed status
 
+pthread_mutex_t gpio_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int random_flag = 2;
 
 int test_mb_p, test_modu_p;
 int print_evm_p = 0, print_data_p = 0, gpio_ch = 0;
+
+int evm_flag = 0;
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -437,8 +441,15 @@ void getInfo(void *rx_buf, int *lcnum)
         if (j == 1212)
         {
             // gpio rst
+            pthread_mutex_lock(&gpio_mutex);
             setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
             setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_L);
+            evm_flag = 0;
+
+            setdir(RECEIVE_RESET, SYSFS_GPIO_DIR_OUT);
+            setvalue(RECEIVE_RESET, SYSFS_GPIO_VAL_H);
+            setvalue(RECEIVE_RESET, SYSFS_GPIO_VAL_L);
+            pthread_mutex_unlock(&gpio_mutex);
 
             int it = 0;
             long *index_l = rx_buf;
@@ -470,7 +481,7 @@ void getInfo(void *rx_buf, int *lcnum)
         }
     }
 
-    if (j == 1234)
+    if (j == 1234 && !evm_flag)
     {
         char bitpack_s[64] = {0};
         char2bit(charpack_s, 8, bitpack_s);
@@ -720,7 +731,7 @@ void *udp_recv(void *args)
         // }
         // }
 
-        usleep(USLEEP * 1000000);
+        usleep(USLEEP*1);
         // break;
     }
 
@@ -739,7 +750,7 @@ static int parse_args(int argc, char **argv)
     char option;
     int int_arg;
 
-    while ((option = getopt(argc, argv, "b:m:edg")) != (char)-1)
+    while ((option = getopt(argc, argv, "b:m:edgu")) != (char)-1)
     {
         switch (option)
         {
@@ -768,6 +779,12 @@ static int parse_args(int argc, char **argv)
         case 'g':
             gpio_ch = 1;
             break;
+        case 'u':
+            gpio_ch = 0;
+            setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
+            setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_L);
+            evm_flag = 0;
+            break;
         default:
             print_usage(false);
             return -EINVAL;
@@ -780,11 +797,14 @@ void *gpiocontrol()
 {
     while (1)
     {
-        usleep(USLEEP * 3 * 1000000);
+        usleep(USLEEP * 10);
         if (gpio_ch)
         {
+            pthread_mutex_lock(&gpio_mutex);
             setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
             setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_H);
+            evm_flag = 1;
+            pthread_mutex_unlock(&gpio_mutex);
         }
     }
 }
@@ -803,12 +823,13 @@ int main(int argc, char **argv)
     const array_t *tx_chans, *rx_chans;
     struct axidma_video_frame transmit_frame, *tx_frame, receive_frame, *rx_frame;
 
-    checkLSB();
+    // checkLSB();
 
     printf("Enter main v5.0 two devices connect\n");
 
-    // gpio
+    // gpio433 export
     export_gpio(EVM_REQ_FLAG);
+    export_gpio(RECEIVE_RESET);
 
     if (parse_args(argc, argv) < 0)
     {
@@ -890,15 +911,9 @@ int main(int argc, char **argv)
            rx_channel);
 
     // test call back
-    char *p_txcall;
-    p_txcall = (char *)malloc(4);
-    *p_txcall = 'a';
-    *(p_txcall + 1) = 'b';
-    *(p_txcall + 2) = 0;
     printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n", tx_channel);
     printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n", rx_channel);
-    axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, p_txcall);
-    char *p_rxcall;
+    axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, NULL);
     axidma_set_callback(axidma_dev, rx_channel, (void *)rxcall, NULL);
 
     /*
@@ -974,7 +989,6 @@ int main(int argc, char **argv)
     {
     }
 
-    free(p_txcall);
     printf("Exiting.\n\n");
 
 free_rx_buf:

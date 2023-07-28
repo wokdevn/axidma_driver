@@ -55,7 +55,7 @@
 #define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1
+#define USLEEP 1000000
 
 #define TR_DATA_TEST
 #define TEST_MB 7
@@ -87,6 +87,9 @@ struct udpmm2s
     struct axidma_video_frame *tx_frame;
 };
 
+
+void process_s2mm(void *args);
+
 int txnum = 0;
 void txcall(int channelid, char *p)
 {
@@ -99,14 +102,24 @@ void txcall(int channelid, char *p)
 }
 
 int rxnum = 0;
-void rxcall()
+void rxcall(int channelid, char *p)
 {
     printf("rx call\n");
-    pthread_mutex_lock(&mutex_s2mm);
+    // pthread_mutex_lock(&mutex_s2mm);
     rxnum++;
     printf("enter rx call, rxnum:%d\n", rxnum);
-    pthread_cond_signal(&flag_s2mm);
-    pthread_mutex_unlock(&mutex_s2mm);
+    // pthread_cond_signal(&flag_s2mm);
+    // pthread_mutex_unlock(&mutex_s2mm);
+
+    unsigned char *processdata = (unsigned char *)malloc(TRANS_SIZE * sizeof(char));
+    memcpy(processdata, p, TRANS_SIZE);
+
+    pthread_t tids;
+    int ret = pthread_create(&tids, NULL, (void *)process_s2mm, processdata);
+    if (ret != 0)
+    {
+        printf("pthread_create error: error_code=%d", ret);
+    }
 }
 
 /*
@@ -660,23 +673,23 @@ static int s2mm_all_test(axidma_dev_t dev, int rx_channel, void *rx_buf,
     //     return rc;
     // }
 
-    pthread_mutex_lock(&mutex_s2mm);
+    // pthread_mutex_lock(&mutex_s2mm);
     axidma_oneway_transfer(dev, rx_channel, rx_buf, rx_size, false);
-    pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
+    // pthread_cond_wait(&flag_s2mm, &mutex_s2mm);
 
-    printf("s2mm get flag\n");
-    unsigned char *processdata = (unsigned char *)malloc(rx_size * sizeof(char));
-    memcpy(processdata, rx_buf, rx_size);
+    // printf("s2mm get flag\n");
+    // unsigned char *processdata = (unsigned char *)malloc(rx_size * sizeof(char));
+    // memcpy(processdata, rx_buf, rx_size);
 
-    pthread_t tids;
-    int ret = pthread_create(&tids, NULL, (void *)process_s2mm, processdata);
-    if (ret != 0)
-    {
-        printf("pthread_create error: error_code=%d", ret);
-        return -1;
-    }
+    // pthread_t tids;
+    // int ret = pthread_create(&tids, NULL, (void *)process_s2mm, processdata);
+    // if (ret != 0)
+    // {
+    //     printf("pthread_create error: error_code=%d", ret);
+    //     return -1;
+    // }
 
-    pthread_mutex_unlock(&mutex_s2mm);
+    // pthread_mutex_unlock(&mutex_s2mm);
 
     // int ldpcnum;
 
@@ -880,7 +893,7 @@ int main(int argc, char **argv)
     printf("tx channel:%d>>>>>>>>>>>>>>>>>>>>\n", tx_channel);
     printf("rx channel:%d>>>>>>>>>>>>>>>>>>>>\n", rx_channel);
     axidma_set_callback(axidma_dev, tx_channel, (void *)txcall, NULL);
-    axidma_set_callback(axidma_dev, rx_channel, (void *)rxcall, NULL);
+    axidma_set_callback(axidma_dev, rx_channel, (void *)rxcall, rx_buf);
 
     /*
     udp receive not used for now, just use the mm2s part to send data
