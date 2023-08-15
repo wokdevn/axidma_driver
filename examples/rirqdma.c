@@ -28,7 +28,7 @@
 #define HEAD_SIZE 8
 
 // The size of data to send per transfer, in byte
-#define TRANS_NUM 4 * 1320
+#define TRANS_NUM 8 * 1320
 #define TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
 #define BUFFER_SIZE_MAX TRANS_NUM * 5
@@ -937,7 +937,7 @@ void rece_cb(int channelid, void *data)
     //     printf("%d ,", rx_buf_tmp[i]);
     // }
 
-    int ct = 1320 * 4 / 8;
+    int ct = 1320 * 8 / 8;
     int it = 0;
     long *index_l = data;
     while (ct)
@@ -962,6 +962,11 @@ void rece_cb(int channelid, void *data)
     char fivesix[1320];
     char seveneight[1320];
 
+    char eightnine[1320];
+    char onenine[1320];
+    char twonine[1320];
+    char threenine[1320];
+
     char *char_ptr = data;
 
     memcpy(onetwo, char_ptr, 1320);
@@ -969,22 +974,45 @@ void rece_cb(int channelid, void *data)
     memcpy(fivesix, char_ptr + 1320 * 2, 1320);
     memcpy(seveneight, char_ptr + 1320 * 3, 1320);
 
+    memcpy(eightnine, char_ptr+1320*4, 1320);
+    memcpy(onenine, char_ptr + 1320*5, 1320);
+    memcpy(twonine, char_ptr + 1320 * 6, 1320);
+    memcpy(threenine, char_ptr + 1320 * 7, 1320);
+
     // change head
     long *head = onetwo;
     *head = 0x0008000700080007;
-    *(head + 1) = 0x0001000100010001;
+    *(head + 1) = 0x0009000900090009;
 
     head = threefour;
     *head = 0x0006000500060005;
-    *(head + 1) = 0x0001000100010001;
+    *(head + 1) = 0x0009000900090009;
 
     head = fivesix;
     *head = 0x0008000700080007;
-    *(head + 1) = 0x0002000200020002;
+    *(head + 1) = 0x000a000a000a000a;
 
     head = seveneight;
     *head = 0x0006000500060005;
-    *(head + 1) = 0x0002000200020002;
+    *(head + 1) = 0x000a000a000a000a;
+
+
+    head = eightnine;
+    *head = 0x0008000700080007;
+    *(head + 1) = 0x000b000b000b000b;
+
+    head = onenine;
+    *head = 0x0006000500060005;
+    *(head + 1) = 0x000b000b000b000b;
+
+    head = twonine;
+    *head = 0x0008000700080007;
+    *(head + 1) = 0x000c000c000c000c;
+
+    head = threenine;
+    *head = 0x0006000500060005;
+    *(head + 1) = 0x000c000c000c000c;
+
 
     // printf("before send\n");
     long *checki = onetwo;
@@ -1015,6 +1043,34 @@ void rece_cb(int channelid, void *data)
         checki++;
     }
 
+    checki = eightnine;
+    for (int i = 0; i < 1320 / 8; ++i)
+    {
+        printf("eightnine now data %d: %016lx \n", i, *checki);
+        checki++;
+    }
+
+    checki = onenine;
+    for (int i = 0; i < 1320 / 8; ++i)
+    {
+        printf("onenine now data %d: %016lx \n", i, *checki);
+        checki++;
+    }
+
+    checki = twonine;
+    for (int i = 0; i < 1320 / 8; ++i)
+    {
+        printf("twonine now data %d: %016lx \n", i, *checki);
+        checki++;
+    }
+
+    checki = threenine;
+    for (int i = 0; i < 1320 / 8; ++i)
+    {
+        printf("threenine now data %d: %016lx \n", i, *checki);
+        checki++;
+    }
+
     if (!sec_flag)
     {
         waitFlag = 0;
@@ -1038,6 +1094,22 @@ void rece_cb(int channelid, void *data)
     it_l = (long *)seveneight;
     // printf("4:%lx",*it);
     udp_send(seveneight, 1320);
+
+    it_l = (long *)eightnine;
+    // printf("1:%lx",*it);
+    udp_send(eightnine, 1320);
+
+    it_l = (long *)onenine;
+    // printf("2:%lx",*it);
+    udp_send(onenine, 1320);
+
+    it_l = (long *)twonine;
+    // printf("3:%lx",*it);
+    udp_send(twonine, 1320);
+
+    it_l = (long *)threenine;
+    // printf("4:%lx",*it);
+    udp_send(threenine, 1320);
 
     printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
@@ -1161,6 +1233,7 @@ int main(int argc, char **argv)
 
     // double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000; //  精确到秒
     gettimeofday(&tv_begin_s, NULL);
+    double timeuse_ms_s;
 
     while (1)
     {
@@ -1182,8 +1255,8 @@ int main(int argc, char **argv)
 
         gettimeofday(&tv_end_s, NULL);
         timersub(&tv_end_s, &tv_begin_s, &tresult_s);
-        double timeuse_ms = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
-        if (timeuse_ms > 500)
+        timeuse_ms_s = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
+        if (timeuse_ms_s > 500)
         {
             if (!sec_flag)
             {

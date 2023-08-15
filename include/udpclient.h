@@ -8,7 +8,7 @@
 
 
 #define DEST_PORT 5001
-#define DSET_IP_ADDRESS  "192.168.0.126"
+#define DSET_IP_ADDRESS  "192.168.1.126"
 #define BUFFER_SIZE 1320
 
 #define CLIENT_PORT 1234
