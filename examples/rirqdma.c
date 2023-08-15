@@ -1015,6 +1015,14 @@ void rece_cb(int channelid, void *data)
         checki++;
     }
 
+    if (!sec_flag)
+    {
+        waitFlag = 0;
+        return;
+    }
+
+    sec_flag = 0;
+
     long *it_l = (long *)onetwo;
     // printf("1:%lx",*it);
     udp_send(onetwo, 1320);
@@ -1149,7 +1157,10 @@ int main(int argc, char **argv)
 
     struct timeval tv_begin, tv_end, tresult;
 
+    struct timeval tv_begin_s, tv_end_s, tresult_s;
+
     // double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000; //  精确到秒
+    gettimeofday(&tv_begin_s, NULL);
 
     while (1)
     {
@@ -1159,14 +1170,27 @@ int main(int argc, char **argv)
             gettimeofday(&tv_end, NULL);
             timersub(&tv_end, &tv_begin, &tresult);
             double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
-            if(timeuse_ms>20){
-                axidma_stop_transfer(axidma_dev,rx_channel);
+            if (timeuse_ms > 20)
+            {
+                axidma_stop_transfer(axidma_dev, rx_channel);
                 break;
             }
         }
         printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
         printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
         printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
+
+        gettimeofday(&tv_end_s, NULL);
+        timersub(&tv_end_s, &tv_begin_s, &tresult_s);
+        double timeuse_ms = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
+        if (timeuse_ms > 500)
+        {
+            if (!sec_flag)
+            {
+                sec_flag = 1;
+            }
+            gettimeofday(&tv_begin_s, NULL);
+        }
 
         axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUFFER_SIZE_MAX, false);
         waitFlag = 1;
