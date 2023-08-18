@@ -28,7 +28,7 @@
 #define HEAD_SIZE 8
 
 // The size of data to send per transfer, in byte
-#define TRANS_NUM 8 * 1320
+#define TRANS_NUM 6 * 1320
 #define TRANS_SIZE ((int)(TRANS_NUM * sizeof(char)))
 
 #define BUFFER_SIZE_MAX TRANS_NUM * 5
@@ -937,7 +937,7 @@ void rece_cb(int channelid, void *data)
     //     printf("%d ,", rx_buf_tmp[i]);
     // }
 
-    int ct = 1320 * 8 / 8;
+    int ct = 1320 * 6 / 8;
     int it = 0;
     long *index_l = data;
     while (ct)
@@ -950,7 +950,7 @@ void rece_cb(int channelid, void *data)
 
     long *pack_l = data;
 
-    if (pack_l[165] != 0x0004000300040003)
+    if (pack_l[0] != 0x0002000100020001 || pack_l[165] != 0x0004000300040003 || pack_l[330] != 0x0006000500060005 || pack_l[495] != 0x0008000700080007 || pack_l[660] != 0x0009000800090008 || pack_l[825] != 0x0009000100090001)
     {
         printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
         waitFlag = 0;
@@ -964,8 +964,8 @@ void rece_cb(int channelid, void *data)
 
     char eightnine[1320];
     char onenine[1320];
-    char twonine[1320];
-    char threenine[1320];
+    // char twonine[1320];
+    // char threenine[1320];
 
     char *char_ptr = data;
 
@@ -974,45 +974,66 @@ void rece_cb(int channelid, void *data)
     memcpy(fivesix, char_ptr + 1320 * 2, 1320);
     memcpy(seveneight, char_ptr + 1320 * 3, 1320);
 
-    memcpy(eightnine, char_ptr+1320*4, 1320);
-    memcpy(onenine, char_ptr + 1320*5, 1320);
-    memcpy(twonine, char_ptr + 1320 * 6, 1320);
-    memcpy(threenine, char_ptr + 1320 * 7, 1320);
+    memcpy(eightnine, char_ptr + 1320 * 4, 1320);
+    memcpy(onenine, char_ptr + 1320 * 5, 1320);
+    // memcpy(twonine, char_ptr + 1320 * 6, 1320);
+    // memcpy(threenine, char_ptr + 1320 * 7, 1320);
 
     // change head
     long *head = onetwo;
     *head = 0x0008000700080007;
-    *(head + 1) = 0x0009000900090009;
+    *(head + 1) = 0x000d000d000d000d;
 
     head = threefour;
     *head = 0x0006000500060005;
-    *(head + 1) = 0x0009000900090009;
+    *(head + 1) = 0x000d000d000d000d;
 
     head = fivesix;
     *head = 0x0008000700080007;
-    *(head + 1) = 0x000a000a000a000a;
+    *(head + 1) = 0x000e000e000e000e;
 
     head = seveneight;
     *head = 0x0006000500060005;
-    *(head + 1) = 0x000a000a000a000a;
-
+    *(head + 1) = 0x000e000e000e000e;
 
     head = eightnine;
     *head = 0x0008000700080007;
-    *(head + 1) = 0x000b000b000b000b;
+    *(head + 1) = 0x000f000f000f000f;
 
+    long stardata_s = *(head + 3);
+    int same_count = 0;
+    for (int i = 4; i < 50; ++i)
+    {
+        if ((*(head + i)) == stardata_s)
+        {
+            same_count++;
+        }
+    }
+    int changeflag = 0;
+    if (same_count >= 40)
+    {
+        changeflag = 1;
+    }
     head = onenine;
     *head = 0x0006000500060005;
-    *(head + 1) = 0x000b000b000b000b;
+    *(head + 1) = 0x000f000f000f000f;
+    if (changeflag == 1)
+    {
+        long *change_p = head + 2;
+        for (int i = 0; i < 163; ++i)
+        {
+            *change_p = 0;
+            change_p++;
+        }
+    }
 
-    head = twonine;
-    *head = 0x0008000700080007;
-    *(head + 1) = 0x000c000c000c000c;
+    // head = twonine;
+    // *head = 0x0008000700080007;
+    // *(head + 1) = 0x000c000c000c000c;
 
-    head = threenine;
-    *head = 0x0006000500060005;
-    *(head + 1) = 0x000c000c000c000c;
-
+    // head = threenine;
+    // *head = 0x0006000500060005;
+    // *(head + 1) = 0x000c000c000c000c;
 
     // printf("before send\n");
     long *checki = onetwo;
@@ -1057,19 +1078,19 @@ void rece_cb(int channelid, void *data)
         checki++;
     }
 
-    checki = twonine;
-    for (int i = 0; i < 1320 / 8; ++i)
-    {
-        printf("twonine now data %d: %016lx \n", i, *checki);
-        checki++;
-    }
+    // checki = twonine;
+    // for (int i = 0; i < 1320 / 8; ++i)
+    // {
+    //     printf("twonine now data %d: %016lx \n", i, *checki);
+    //     checki++;
+    // }
 
-    checki = threenine;
-    for (int i = 0; i < 1320 / 8; ++i)
-    {
-        printf("threenine now data %d: %016lx \n", i, *checki);
-        checki++;
-    }
+    // checki = threenine;
+    // for (int i = 0; i < 1320 / 8; ++i)
+    // {
+    //     printf("threenine now data %d: %016lx \n", i, *checki);
+    //     checki++;
+    // }
 
     if (!sec_flag)
     {
@@ -1103,13 +1124,13 @@ void rece_cb(int channelid, void *data)
     // printf("2:%lx",*it);
     udp_send(onenine, 1320);
 
-    it_l = (long *)twonine;
-    // printf("3:%lx",*it);
-    udp_send(twonine, 1320);
+    // it_l = (long *)twonine;
+    // // printf("3:%lx",*it);
+    // udp_send(twonine, 1320);
 
-    it_l = (long *)threenine;
-    // printf("4:%lx",*it);
-    udp_send(threenine, 1320);
+    // it_l = (long *)threenine;
+    // // printf("4:%lx",*it);
+    // udp_send(threenine, 1320);
 
     printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
