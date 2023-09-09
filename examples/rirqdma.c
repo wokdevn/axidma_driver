@@ -964,8 +964,8 @@ void rece_cb(int channelid, void *data)
 
     char eightnine[1320];
     char onenine[1320];
-    // char twonine[1320];
-    // char threenine[1320];
+    char twonine[1320];
+    char threenine[1320];
 
     char *char_ptr = data;
 
@@ -976,8 +976,8 @@ void rece_cb(int channelid, void *data)
 
     memcpy(eightnine, char_ptr + 1320 * 4, 1320);
     memcpy(onenine, char_ptr + 1320 * 5, 1320);
-    // memcpy(twonine, char_ptr + 1320 * 6, 1320);
-    // memcpy(threenine, char_ptr + 1320 * 7, 1320);
+    memcpy(twonine, char_ptr + 1320 * 6, 1320);
+    memcpy(threenine, char_ptr + 1320 * 7, 1320);
 
     // change head
     long *head = onetwo;
@@ -1027,13 +1027,13 @@ void rece_cb(int channelid, void *data)
         }
     }
 
-    // head = twonine;
-    // *head = 0x0008000700080007;
-    // *(head + 1) = 0x000c000c000c000c;
+    head = twonine;
+    *head = 0x0008000700080007;
+    *(head + 1) = 0x000c000c000c000c;
 
-    // head = threenine;
-    // *head = 0x0006000500060005;
-    // *(head + 1) = 0x000c000c000c000c;
+    head = threenine;
+    *head = 0x0006000500060005;
+    *(head + 1) = 0x000c000c000c000c;
 
     // printf("before send\n");
     long *checki = onetwo;
@@ -1078,19 +1078,19 @@ void rece_cb(int channelid, void *data)
         checki++;
     }
 
-    // checki = twonine;
-    // for (int i = 0; i < 1320 / 8; ++i)
-    // {
-    //     printf("twonine now data %d: %016lx \n", i, *checki);
-    //     checki++;
-    // }
+    checki = twonine;
+    for (int i = 0; i < 1320 / 8; ++i)
+    {
+        printf("twonine now data %d: %016lx \n", i, *checki);
+        checki++;
+    }
 
-    // checki = threenine;
-    // for (int i = 0; i < 1320 / 8; ++i)
-    // {
-    //     printf("threenine now data %d: %016lx \n", i, *checki);
-    //     checki++;
-    // }
+    checki = threenine;
+    for (int i = 0; i < 1320 / 8; ++i)
+    {
+        printf("threenine now data %d: %016lx \n", i, *checki);
+        checki++;
+    }
 
     if (!sec_flag)
     {
@@ -1124,13 +1124,13 @@ void rece_cb(int channelid, void *data)
     // printf("2:%lx",*it);
     udp_send(onenine, 1320);
 
-    // it_l = (long *)twonine;
-    // // printf("3:%lx",*it);
-    // udp_send(twonine, 1320);
+    it_l = (long *)twonine;
+    // printf("3:%lx",*it);
+    udp_send(twonine, 1320);
 
-    // it_l = (long *)threenine;
-    // // printf("4:%lx",*it);
-    // udp_send(threenine, 1320);
+    it_l = (long *)threenine;
+    // printf("4:%lx",*it);
+    udp_send(threenine, 1320);
 
     printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
@@ -1277,7 +1277,7 @@ int main(int argc, char **argv)
         gettimeofday(&tv_end_s, NULL);
         timersub(&tv_end_s, &tv_begin_s, &tresult_s);
         timeuse_ms_s = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
-        if (timeuse_ms_s > 500)
+        if (timeuse_ms_s > 100)
         {
             if (!sec_flag)
             {
