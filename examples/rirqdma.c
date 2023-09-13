@@ -19,7 +19,7 @@
 #include "util.h"       // Miscellaneous utilities
 #include "conversion.h" // Miscellaneous conversion utilities
 
-#include "udpsend.h"
+#include "tcpserver.c"
 
 /*----------------------------------------------------------------------------
  * Internal Definitons
@@ -65,11 +65,11 @@ static long *pTail = NULL;      // 环形存储区的结尾地址
 static long *pValid = NULL;     // 已使用的缓冲区的首地址
 static long *pValidTail = NULL; // 已使用的缓冲区的尾地址
 
-typedef struct udppack
+typedef struct ippack
 {
     void *pack;
     int size;
-} udppack;
+} ippack;
 
 /*----------------------------------------------------------------------------
  * Function
@@ -298,9 +298,9 @@ int init_reg_dev()
     return 0;
 }
 
-int mudpsend(udppack udpk)
+int mudpsend(ippack ippk)
 {
-    return udp_send(udpk.pack, udpk.size);
+    return udp_send(ippk.pack, ippk.size);
 }
 
 void rece_cb(int channelid, void *data)
@@ -328,7 +328,7 @@ void rece_cb(int channelid, void *data)
 
     // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
 
-    for (int i = 0; i < 4096; ++i)
+    for (int i = 0; i < 4096+10; ++i)
     {
         printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
         *((long *)(rx_buf_tmp + i))=0;
