@@ -26,8 +26,8 @@
  *----------------------------------------------------------------------------*/
 
 // The size of data to send per transfer, in byte
-#define TRANS_SIZE 4096 * 64 / 8
-#define BUFFER_SIZE_MAX TRANS_SIZE * 5
+#define TRANS_SIZE 4096 * 64 * 64 / 8
+#define BUFFER_SIZE_MAX TRANS_SIZE * 2
 
 #define CIRCLE_SIZE_LONG 4096 * 5
 
@@ -65,10 +65,11 @@ static long *pTail = NULL;      // 环形存储区的结尾地址
 static long *pValid = NULL;     // 已使用的缓冲区的首地址
 static long *pValidTail = NULL; // 已使用的缓冲区的尾地址
 
-typedef struct udppack{
-    void* pack;
+typedef struct udppack
+{
+    void *pack;
     int size;
-}udppack;
+} udppack;
 
 /*----------------------------------------------------------------------------
  * Function
@@ -297,35 +298,43 @@ int init_reg_dev()
     return 0;
 }
 
-int mudpsend(udppack udpk){
-    return udp_send(udpk.pack,udpk.size);
+int mudpsend(udppack udpk)
+{
+    return udp_send(udpk.pack, udpk.size);
 }
 
 void rece_cb(int channelid, void *data)
 {
     long *rx_buf_tmp = (long *)data;
-    printf("call\n");
-    printDMAReg();
+    // printf("callback:\n");
 
-    if (getRingbufferValidLen() > 0)
+    // printDMAReg();
+
+    // if (getRingbufferValidLen() > 0)
+    // {
+    //     udppack udpk;
+    //     udpk.pack = pValid;
+    //     udpk.size = TRANS_SIZE;
+
+    //     pthread_t tids;
+    //     int ret = pthread_create(&tids, NULL, (void *)mudpsend, &udpk);
+
+    //     if (ret != 0)
+    //     {
+    //         printf("pthread_create error: error_code=%d", ret);
+    //         return;
+    //     }
+    // }
+
+    // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
+
+    for (int i = 0; i < 4096; ++i)
     {
-        udppack udpk;
-        udpk.pack = pValid;
-        udpk.size = TRANS_SIZE;
-
-        pthread_t tids;
-        int ret = pthread_create(&tids, NULL, (void *)mudpsend, &udpk);
-
-        if (ret != 0)
-        {
-            printf("pthread_create error: error_code=%d", ret);
-            return;
-        }
+        printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
+        *((long *)(rx_buf_tmp + i))=0;
     }
 
-    wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
-
-    printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
+    // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
     waitFlag = 0;
 }
@@ -338,17 +347,22 @@ void printDMAReg()
     int reg30 = gw_ReadReg(0xA0000030);
     int reg34 = gw_ReadReg(0xA0000034);
 
-    if (reg58 != 0x0 || reg30 != 0x17003 || reg34 != 0x1000a)
-    {
-        printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
-        printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
-        printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
-        return;
-    }
-    else
-    {
-        printf("reg ok\n");
-    }
+    // if (reg58 != 0x0 || reg30 != 0x17003 || reg34 != 0x1000a)
+    // {
+    //     printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
+    //     printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
+    //     printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
+    //     return;
+    // }
+    // else
+    // {
+    //     printf("reg ok\n");
+    // }
+
+    printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
+    printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
+    printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
+    printf("48 : 0x%x \n", gw_ReadReg(0xA0000048));
 }
 
 /*----------------------------------------------------------------------------
@@ -375,7 +389,7 @@ int main(int argc, char **argv)
 
     printf("AXI DMA Trans Parameters:\n");
     printf("\tTRANS_SIZE:%d \n", TRANS_SIZE);
-    printf("\tReceive Buffer Size: %ld Byte\n", (rx_size));
+    printf("\tReceive Buffer Size: %ld MByte\n", BYTE_TO_MIB(rx_size));
 
     initRingbuffer();
     udp_init();
@@ -428,14 +442,15 @@ int main(int argc, char **argv)
         while (waitFlag)
         {
         }
-        printDMAReg();
+        // printf("after wait :\n");
+        // printDMAReg();
 
         waitFlag = 1;
         axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUFFER_SIZE_MAX, false);
         if (onceFlag)
             break;
 
-        printf("Next Single transfer !\n");
+        // printf("Next Single transfer !\n");
     }
 
     printf("Single transfer End!\n");
