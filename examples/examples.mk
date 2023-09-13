@@ -19,7 +19,7 @@ include library/library.mk
 EXAMPLES_DIR = examples
 EXAMPLES_FILES = axidma_benchmark.c axidma_display_image.c axidma_transfer.c \
 					test_axidma.c axidma_test.c dma_uart.c interdma.c mgpio.c \
-					irqdma.c rirqdma.c
+					irqdma.c rirqdma.c  tcpclient.c
 
 # The variations of specific targets for the example programs
 EXAMPLES_TARGETS = $(EXAMPLES_FILES:%.c=%)
@@ -29,7 +29,7 @@ EXAMPLES_OUTPUT_EXECUTABLES = $(addprefix $(OUTPUT_DIR)/,$(EXAMPLES_TARGETS))
 
 # The local helper function files used across the example programs.
 UTIL_DIR = $(EXAMPLES_DIR)
-UTIL_FILES = util.c udpsend.c util_interdma.c mgpio.c#udpserver.c
+UTIL_FILES = util.c udpsend.c util_interdma.c mgpio.c tcpserver.c
 UTIL = $(addprefix $(UTIL_DIR)/,$(UTIL_FILES))
 
 # The compiler flags used to compile the examples

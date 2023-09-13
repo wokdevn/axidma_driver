@@ -19,7 +19,7 @@
 #include "util.h"       // Miscellaneous utilities
 #include "conversion.h" // Miscellaneous conversion utilities
 
-#include "tcpserver.c"
+#include "tcpserver.h"
 
 /*----------------------------------------------------------------------------
  * Internal Definitons
@@ -298,11 +298,6 @@ int init_reg_dev()
     return 0;
 }
 
-int mudpsend(ippack ippk)
-{
-    return udp_send(ippk.pack, ippk.size);
-}
-
 void rece_cb(int channelid, void *data)
 {
     long *rx_buf_tmp = (long *)data;
@@ -333,6 +328,8 @@ void rece_cb(int channelid, void *data)
         printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
         *((long *)(rx_buf_tmp + i))=0;
     }
+
+    // sendTcp(data,4096*64/8);
 
     // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
@@ -392,7 +389,16 @@ int main(int argc, char **argv)
     printf("\tReceive Buffer Size: %ld MByte\n", BYTE_TO_MIB(rx_size));
 
     initRingbuffer();
-    udp_init();
+
+    tcpInit();
+
+    // pthread_t tcpTids;
+    // int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
+    // if (ret != 0)
+    // {
+    //     printf("tcp link pthread_create error: error_code=%d", ret);
+    //     goto free_rx_buf;
+    // }
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
@@ -460,5 +466,6 @@ free_rx_buf:
     axidma_destroy(axidma_dev);
 ret:
     releaseRingbuffer();
+    releaseTcp();
     return rc;
 }
