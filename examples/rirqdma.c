@@ -41,8 +41,9 @@ int regdev_read(int reg, int *val);
 int regdev_write(int reg, int val);
 void gw_WriteReg(unsigned int addr, int dat);
 int gw_ReadReg(unsigned int addr);
-void printDMAReg();
+int printDMAReg();
 void rece_cb(int channelid, void *data);
+// ring buffer
 void initRingbuffer(void);
 int wirteRingbuffer(long *buffer, int addLen);
 int readRingbuffer(long *buffer, int len);
@@ -300,10 +301,14 @@ int init_reg_dev()
 
 void rece_cb(int channelid, void *data)
 {
-    long *rx_buf_tmp = (long *)data;
-    // printf("callback:\n");
+    gw_WriteReg(0xA0010004, 0x0);
 
-    // printDMAReg();
+    long *rx_buf_tmp = (long *)data;
+
+    if (printDMAReg() < 0)
+    {
+        printf("callback\n");
+    }
 
     // if (getRingbufferValidLen() > 0)
     // {
@@ -323,13 +328,16 @@ void rece_cb(int channelid, void *data)
 
     // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
 
-    for (int i = 0; i < 4096+10; ++i)
+    if (*((long *)(rx_buf_tmp)) != 0x0001000002000100)
     {
-        printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
-        *((long *)(rx_buf_tmp + i))=0;
+        for (int i = 0; i < 4096 + 10; ++i)
+        {
+            printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
+            *((long *)(rx_buf_tmp + i)) = 0;
+        }
     }
 
-    // sendTcp(data,4096*64/8);
+    sendTcp(data,4096*64/8);
 
     // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
@@ -337,29 +345,30 @@ void rece_cb(int channelid, void *data)
 }
 
 // normal:
-// 0x0,0x17003,0x1000a
-void printDMAReg()
+// 0x0,0x17003,0x1000a,idle complete
+int printDMAReg()
 {
     int reg58 = gw_ReadReg(0xA0000058);
     int reg30 = gw_ReadReg(0xA0000030);
     int reg34 = gw_ReadReg(0xA0000034);
 
-    // if (reg58 != 0x0 || reg30 != 0x17003 || reg34 != 0x1000a)
-    // {
-    //     printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
-    //     printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
-    //     printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
-    //     return;
-    // }
-    // else
-    // {
-    //     printf("reg ok\n");
-    // }
+    if (reg58 != 0x0 || reg30 != 0x17003 || reg34 != 0x1000a)
+    {
+        printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
+        printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
+        printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
+        return -1;
+    }
+    else
+    {
+        // printf("reg ok\n");
+        return 0;
+    }
 
-    printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
-    printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
-    printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
-    printf("48 : 0x%x \n", gw_ReadReg(0xA0000048));
+    // printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
+    // printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
+    // printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
+    // printf("48 : 0x%x \n", gw_ReadReg(0xA0000048));
 }
 
 /*----------------------------------------------------------------------------
@@ -373,10 +382,12 @@ int main(int argc, char **argv)
     char *rx_buf;
     axidma_dev_t axidma_dev;
     const array_t *rx_chans;
+    int trans_count = 0;
 
     printf("Enter main v7.0 double division graph\n");
 
     init_reg_dev();
+    gw_WriteReg(0xA0010004, 0x0);
 
     if (init_args(&rx_channel, &rx_size) < 0)
     {
@@ -392,13 +403,13 @@ int main(int argc, char **argv)
 
     tcpInit();
 
-    // pthread_t tcpTids;
-    // int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
-    // if (ret != 0)
-    // {
-    //     printf("tcp link pthread_create error: error_code=%d", ret);
-    //     goto free_rx_buf;
-    // }
+    pthread_t tcpTids;
+    int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
+    if (ret != 0)
+    {
+        printf("tcp link pthread_create error: error_code=%d", ret);
+        goto free_rx_buf;
+    }
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
@@ -434,25 +445,42 @@ int main(int argc, char **argv)
     printf("Using receive channel %d.\n", rx_channel);
 
     axidma_set_callback(axidma_dev, rx_channel, rece_cb, (void *)rx_buf);
-    printDMAReg();
+    if (printDMAReg() < 0)
+    {
+        printf("after set callback, before first trans\n");
+    }
 
     axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUFFER_SIZE_MAX, false);
     // control ready
     gw_WriteReg(0xA0010004, 0x1);
     printf("Single transfer test successfully completed!\n");
 
-    printDMAReg();
+    if (printDMAReg() < 0)
+    {
+        printf("after submit first trans\n");
+    }
 
     while (1)
     {
         while (waitFlag)
         {
         }
-        // printf("after wait :\n");
-        // printDMAReg();
+
+        if (printDMAReg() < 0)
+        {
+            printf("after wait\n");
+        }
 
         waitFlag = 1;
+
+        trans_count++;
+        //64--big pack, every 100 big pack
+        if (trans_count / 6400 > 0)
+        {
+            printf("trans count:%d\n", trans_count);
+        }
         axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUFFER_SIZE_MAX, false);
+        gw_WriteReg(0xA0010004, 0x1);
         if (onceFlag)
             break;
 

@@ -39,7 +39,7 @@ int tcpInit()
         return -1;
     }
 
-    printf("监听端口: %d\n", SERVER_PORT);
+    printf("listening port: %d\n", SERVER_PORT);
     return 0;
 }
 
