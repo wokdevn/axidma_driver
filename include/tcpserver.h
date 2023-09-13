@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <signal.h>
 
 #define SERVER_PORT 8888
 #define SERVER_IP "192.168.0.27"
@@ -31,3 +32,4 @@ int tcpInit();
 int tcpLink();
 int sendTcp(void *data, int length);
 int releaseTcp();
+void sig_handler(int signo);

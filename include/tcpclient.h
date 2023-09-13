@@ -11,4 +11,5 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SERVER_PORT 7777
+#define SERVER_PORT 8888
+#define SERVER_IP "192.168.0.27"

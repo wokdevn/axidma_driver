@@ -1,9 +1,26 @@
 #include "tcpserver.h"
 
+void sig_handler(int signo)
+{
+    if (signo == SIGPIPE)
+    {
+        printf("received SIG\n");
+        clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, (socklen_t *)&addr_len);
+        if (clientSocket < 0)
+        {
+            perror("accept");
+        }
+        printf("waiting message...\n");
+    }
+}
+
 int tcpInit()
 {
     addr_len = sizeof(clientAddr);
     linkFlag = 0;
+
+    if (signal(SIGPIPE, sig_handler) == SIG_ERR)
+        printf("SIGN ERROR \n");
 
     // socket函数，失败返回-1
     // int socket(int domain, int type, int protocol);
@@ -82,7 +99,7 @@ int sendTcp(void *data, int length)
 
     double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000;      //  精确到秒
     double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
-    printf("timeuse in ms: %f \n", timeuse_ms);
+    // printf("timeuse in ms: %f \n", timeuse_ms);
 
     return 0;
 }

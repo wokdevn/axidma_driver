@@ -36,6 +36,7 @@
  *----------------------------------------------------------------------------*/
 
 static int init_args(int *rx_channel, size_t *rx_size);
+static int parse_args(int argc, char **argv);
 int init_reg_dev();
 int regdev_read(int reg, int *val);
 int regdev_write(int reg, int val);
@@ -59,6 +60,8 @@ int onceFlag = 0;
 int g_memDev;
 void *map_base_dma;
 void *map_base_apb;
+
+int resetFlag = 0;
 
 static int validLen;            // 已使用的数据长度
 static long *pHead = NULL;      // 环形存储区的首地址
@@ -209,6 +212,25 @@ static int init_args(int *rx_channel, size_t *rx_size)
     return 0;
 }
 
+static int parse_args(int argc, char **argv)
+{
+    char option;
+
+    while ((option = getopt(argc, argv, "r")) != (char)-1)
+    {
+        switch (option)
+        {
+        case 'r':
+            resetFlag = 1;
+            break;
+        default:
+            return 0;
+        }
+    }
+
+    return 0;
+}
+
 int regdev_read(int reg, int *val)
 {
     int ret = 0;
@@ -328,6 +350,19 @@ void rece_cb(int channelid, void *data)
 
     // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
 
+    if (linkFlag)
+    {
+        // pthread_t tcpTids;
+        // int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
+        // if (ret != 0)
+        // {
+        //     printf("tcp send pthread_create error: error_code=%d", ret);
+        //     return;
+        // }
+
+        sendTcp(data, 4096 * 64 / 8);
+    }
+
     if (*((long *)(rx_buf_tmp)) != 0x0001000002000100)
     {
         for (int i = 0; i < 4096 + 10; ++i)
@@ -336,8 +371,6 @@ void rece_cb(int channelid, void *data)
             *((long *)(rx_buf_tmp + i)) = 0;
         }
     }
-
-    sendTcp(data,4096*64/8);
 
     // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
@@ -386,8 +419,24 @@ int main(int argc, char **argv)
 
     printf("Enter main v7.0 double division graph\n");
 
+    if (parse_args(argc, argv) < 0)
+    {
+        rc = 1;
+        goto ret;
+    }
+
     init_reg_dev();
-    gw_WriteReg(0xA0010004, 0x0);
+
+    gw_WriteReg(0xA0010004, 0x4);
+
+    if (resetFlag)
+    {
+        gw_WriteReg(0xA0010004, 0x4);
+    }
+    else
+    {
+        gw_WriteReg(0xA0010004, 0x0);
+    }
 
     if (init_args(&rx_channel, &rx_size) < 0)
     {
@@ -452,7 +501,14 @@ int main(int argc, char **argv)
 
     axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUFFER_SIZE_MAX, false);
     // control ready
-    gw_WriteReg(0xA0010004, 0x1);
+    if (resetFlag)
+    {
+        gw_WriteReg(0xA0010004, 0x5);
+    }
+    else
+    {
+        gw_WriteReg(0xA0010004, 0x1);
+    }
     printf("Single transfer test successfully completed!\n");
 
     if (printDMAReg() < 0)
@@ -474,7 +530,7 @@ int main(int argc, char **argv)
         waitFlag = 1;
 
         trans_count++;
-        //64--big pack, every 100 big pack
+        // 64--big pack, every 100 big pack
         if (trans_count / 6400 > 0)
         {
             printf("trans count:%d\n", trans_count);

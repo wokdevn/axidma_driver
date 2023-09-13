@@ -22,7 +22,7 @@ int main()
 
     // 指定服务器端的ip，本地测试：127.0.0.1
     // inet_addr()函数，将点分十进制IP转换成网络字节序IP
-    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    serverAddr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
     if (connect(clientSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
     {
@@ -30,9 +30,9 @@ int main()
         return 1;
     }
 
-    printf("连接到主机...\n");
+    printf("connect to server...\n");
 
-    printf("读取消息:");
+    printf("read message:");
 
     while (1)
     {
@@ -42,7 +42,7 @@ int main()
         {
             for (long i = 0; i < 4096; ++i)
             {
-                printf("data in %ld: %016ld\n", i, recvbuf[i]);
+                printf("data in %ld: %016lx\n", i, recvbuf[i]);
             }
         }
     }
