@@ -34,4 +34,4 @@ int tcpLink();
 int sendTcp(void *data, int length);
 int releaseTcp();
 void sig_handler(int signo);
-int waitlink();
+void waitlink();

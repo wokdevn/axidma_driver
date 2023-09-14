@@ -42,8 +42,9 @@ int main()
         {
             for (long i = 0; i < 4096; ++i)
             {
-                printf("data in %ld: %016lx\n", i, recvbuf[i]);
+                printf("%016lx\n",recvbuf[i]);
             }
+            printf("%016lx\n",(long)0);
         }
     }
 

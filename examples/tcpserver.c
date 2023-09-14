@@ -1,16 +1,16 @@
 #include "tcpserver.h"
 
-int waitlink()
+void waitlink()
 {
     clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, (socklen_t *)&addr_len);
     if (clientSocket < 0)
     {
         // perror("accept");
         printf("wait link\n");
-        return -1;
+        // pthread_exit(NULL);
     }
 
-    return 0;
+    // pthread_exit(NULL);
 }
 
 void sig_handler(int signo)
@@ -26,6 +26,14 @@ void sig_handler(int signo)
             printf("tcp link pthread_create error: error_code=%d", ret);
             return;
         }
+
+        // ret = pthread_detach(tcpTids);
+        // if (ret != 0)
+        // {
+        //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+        //     return;
+        // }
+
         // printf("waiting message...\n");
     }
 }
@@ -103,6 +111,7 @@ int tcpLink()
     // 表达式：char *inet_ntoa (struct in_addr);
     printf("IP is %s\n", inet_ntoa(clientAddr.sin_addr));
     printf("Port is %d\n", htons(clientAddr.sin_port));
+    // pthread_exit(NULL);
     return 0;
 }
 

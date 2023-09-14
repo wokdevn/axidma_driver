@@ -56,7 +56,7 @@ int wirteRingbuffer(long *buffer, int addLen);
 int readRingbuffer(long *buffer, int len);
 int getRingbufferValidLen(void);
 void releaseRingbuffer(void);
-int mtcpsend(ippack *tcppack);
+void mtcpsend(ippack *tcppack);
 
 /*----------------------------------------------------------------------------
  * Variable Declaration
@@ -322,9 +322,10 @@ int init_reg_dev()
     return 0;
 }
 
-int mtcpsend(ippack *tcppack)
+void mtcpsend(ippack *tcppack)
 {
-    return sendTcp(tcppack->pack, tcppack->size);
+    sendTcp(tcppack->pack, tcppack->size);
+    // pthread_exit(NULL);
 }
 
 void rece_cb(int channelid, void *data)
@@ -352,12 +353,19 @@ void rece_cb(int channelid, void *data)
     //         printf("pthread_create error: error_code=%d", ret);
     //         return;
     //     }
+
+    //     ret = pthread_detach(tids);
+    //     if (ret != 0)
+    //     {
+    //         fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+    //         return;
+    //     }
     // }
 
     // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
 
     if (linkFlag)
-    {       
+    {
         ippack tcppk;
         tcppk.pack = data;
         tcppk.size = 4096 * 64 / 8;
@@ -370,6 +378,12 @@ void rece_cb(int channelid, void *data)
             return;
         }
 
+        // ret = pthread_detach(tids);
+        // if (ret != 0)
+        // {
+        //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+        //     return;
+        // }
     }
 
     // if (*((long *)(rx_buf_tmp)) != 0x0001000002000100)
@@ -436,12 +450,12 @@ int main(int argc, char **argv)
 
     init_reg_dev();
 
-    //reset
-    // gw_WriteReg(0xA0010004, 0x4);
+    // reset
+    //  gw_WriteReg(0xA0010004, 0x4);
 
     if (resetFlag)
     {
-        gw_WriteReg(0xA0010004, 0x4);//reset
+        gw_WriteReg(0xA0010004, 0x4); // reset
     }
     else
     {
@@ -469,6 +483,13 @@ int main(int argc, char **argv)
         printf("tcp link pthread_create error: error_code=%d", ret);
         goto free_rx_buf;
     }
+
+    // ret = pthread_detach(tcpTids);
+    // if (ret != 0)
+    // {
+    //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+    //     goto free_rx_buf;
+    // }
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
@@ -513,7 +534,7 @@ int main(int argc, char **argv)
     // control ready
     if (resetFlag)
     {
-        gw_WriteReg(0xA0010004, 0x5);//reset
+        gw_WriteReg(0xA0010004, 0x5); // reset
     }
     else
     {
