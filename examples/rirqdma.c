@@ -31,6 +31,12 @@
 
 #define CIRCLE_SIZE_LONG 4096 * 5
 
+typedef struct ippack
+{
+    void *pack;
+    int size;
+} ippack;
+
 /*----------------------------------------------------------------------------
  * Function Declaration
  *----------------------------------------------------------------------------*/
@@ -50,6 +56,7 @@ int wirteRingbuffer(long *buffer, int addLen);
 int readRingbuffer(long *buffer, int len);
 int getRingbufferValidLen(void);
 void releaseRingbuffer(void);
+int mtcpsend(ippack *tcppack);
 
 /*----------------------------------------------------------------------------
  * Variable Declaration
@@ -68,12 +75,6 @@ static long *pHead = NULL;      // 环形存储区的首地址
 static long *pTail = NULL;      // 环形存储区的结尾地址
 static long *pValid = NULL;     // 已使用的缓冲区的首地址
 static long *pValidTail = NULL; // 已使用的缓冲区的尾地址
-
-typedef struct ippack
-{
-    void *pack;
-    int size;
-} ippack;
 
 /*----------------------------------------------------------------------------
  * Function
@@ -321,6 +322,11 @@ int init_reg_dev()
     return 0;
 }
 
+int mtcpsend(ippack *tcppack)
+{
+    return sendTcp(tcppack->pack, tcppack->size);
+}
+
 void rece_cb(int channelid, void *data)
 {
     gw_WriteReg(0xA0010004, 0x0);
@@ -351,26 +357,29 @@ void rece_cb(int channelid, void *data)
     // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
 
     if (linkFlag)
-    {
-        // pthread_t tcpTids;
-        // int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
-        // if (ret != 0)
-        // {
-        //     printf("tcp send pthread_create error: error_code=%d", ret);
-        //     return;
-        // }
-
-        sendTcp(data, 4096 * 64 / 8);
-    }
-
-    if (*((long *)(rx_buf_tmp)) != 0x0001000002000100)
-    {
-        for (int i = 0; i < 4096 + 10; ++i)
+    {       
+        ippack tcppk;
+        tcppk.pack = data;
+        tcppk.size = 4096 * 64 / 8;
+        pthread_t tids;
+        int ret = pthread_create(&tids, NULL, (void *)mtcpsend, &tcppk);
+        if (ret != 0)
         {
-            printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
-            *((long *)(rx_buf_tmp + i)) = 0;
+            printf("pthread_create error: error_code=%d", ret);
+            waitFlag = 0;
+            return;
         }
+
     }
+
+    // if (*((long *)(rx_buf_tmp)) != 0x0001000002000100)
+    // {
+    //     for (int i = 0; i < 4096 + 10; ++i)
+    //     {
+    //         printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
+    //         *((long *)(rx_buf_tmp + i)) = 0;
+    //     }
+    // }
 
     // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
@@ -427,11 +436,12 @@ int main(int argc, char **argv)
 
     init_reg_dev();
 
-    gw_WriteReg(0xA0010004, 0x4);
+    //reset
+    // gw_WriteReg(0xA0010004, 0x4);
 
     if (resetFlag)
     {
-        gw_WriteReg(0xA0010004, 0x4);
+        gw_WriteReg(0xA0010004, 0x4);//reset
     }
     else
     {
@@ -503,7 +513,7 @@ int main(int argc, char **argv)
     // control ready
     if (resetFlag)
     {
-        gw_WriteReg(0xA0010004, 0x5);
+        gw_WriteReg(0xA0010004, 0x5);//reset
     }
     else
     {
@@ -531,7 +541,7 @@ int main(int argc, char **argv)
 
         trans_count++;
         // 64--big pack, every 100 big pack
-        if (trans_count / 6400 > 0)
+        if (trans_count % 6400 == 0)
         {
             printf("trans count:%d\n", trans_count);
         }

@@ -1,16 +1,32 @@
 #include "tcpserver.h"
 
+int waitlink()
+{
+    clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, (socklen_t *)&addr_len);
+    if (clientSocket < 0)
+    {
+        // perror("accept");
+        printf("wait link\n");
+        return -1;
+    }
+
+    return 0;
+}
+
 void sig_handler(int signo)
 {
     if (signo == SIGPIPE)
     {
-        printf("received SIG\n");
-        clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, (socklen_t *)&addr_len);
-        if (clientSocket < 0)
+        // printf("received SIG\n");
+
+        pthread_t tcpTids;
+        int ret = pthread_create(&tcpTids, NULL, (void *)waitlink, NULL);
+        if (ret != 0)
         {
-            perror("accept");
+            printf("tcp link pthread_create error: error_code=%d", ret);
+            return;
         }
-        printf("waiting message...\n");
+        // printf("waiting message...\n");
     }
 }
 
@@ -29,7 +45,8 @@ int tcpInit()
     // 第三个参数设置为0
     if ((serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
     {
-        perror("socket");
+        // perror("socket");
+        printf("init tcp error\n");
         return -1;
     }
 
@@ -39,20 +56,22 @@ int tcpInit()
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT);
     // ip可是是本服务器的ip，也可以用宏INADDR_ANY代替，代表0.0.0.0，表明所有地址
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);;
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
     // 对于bind，accept之类的函数，里面套接字参数都是需要强制转换成(struct sockaddr *)
     // bind三个参数：服务器端的套接字的文件描述符，
     if (bind(serverSocket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
-        perror("bind");
+        // perror("bind");
+        printf("bind error\n");
         return -1;
     }
 
     // 设置服务器上的socket为监听状态
     if (listen(serverSocket, 1) < 0)
     {
-        perror("listen");
+        // perror("listen");
+        printf("listen error\n");
         return -1;
     }
 
@@ -73,7 +92,8 @@ int tcpLink()
     clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, (socklen_t *)&addr_len);
     if (clientSocket < 0)
     {
-        perror("accept");
+        // perror("accept");
+        printf("tcp link error\n");
         return -1;
     }
     printf("Link Established...\n");
@@ -92,7 +112,8 @@ int sendTcp(void *data, int length)
 
     gettimeofday(&tv_begin, NULL);
 
-    send(clientSocket, data, length, 0);
+    int sendrt = send(clientSocket, data, length, 0);
+    // printf("sendrt:%d\n", sendrt);
 
     gettimeofday(&tv_end, NULL);
     timersub(&tv_end, &tv_begin, &tresult);
