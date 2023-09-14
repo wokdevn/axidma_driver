@@ -1,5 +1,7 @@
 #include "tcpclient.h"
 
+long d1;
+
 int main()
 {
     // 客户端只需要一个套接字文件描述符，用于和服务器通信
@@ -40,11 +42,34 @@ int main()
         printf("rev num:%d\n", iDataNum);
         if (iDataNum > 0)
         {
-            for (long i = 0; i < 4096; ++i)
+            // for (long i = 0; i < 4096; ++i)
+            // {
+            //     printf("%016lx\n",recvbuf[i]);
+            // }
+            // printf("%016lx\n",(long)0);
+
+            if (recvbuf[0] != d1 + 0x0100)
             {
-                printf("%016lx\n",recvbuf[i]);
+                printf("d1: %016lx, now: %016lx\n\n", d1, recvbuf[0]);
+                d1 = recvbuf[0];
+
+                for (int i = 0; i < 10; ++i)
+                {
+                    printf("i:%d, data:%016lx\n", i, *((long *)(recvbuf + i)));
+                    *((long *)(recvbuf + i)) = 0;
+                }
+                printf("\n\n\n");
             }
-            printf("%016lx\n",(long)0);
+            else
+            {
+                d1 = recvbuf[0];
+                printf("ok\n");
+            }
+
+            if (d1 == 0x02000)
+            {
+                d1 = 0x0;
+            }
         }
     }
 

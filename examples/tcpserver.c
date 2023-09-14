@@ -6,9 +6,13 @@ void waitlink()
     if (clientSocket < 0)
     {
         // perror("accept");
-        printf("wait link\n");
+        printf("clientSocket < 0 %d\n",clientSocket);
+        perror("new accept error:");
         // pthread_exit(NULL);
     }
+
+    printf("IP is %s\n", inet_ntoa(clientAddr.sin_addr));
+    printf("Port is %d\n", htons(clientAddr.sin_port));
 
     // pthread_exit(NULL);
 }
@@ -27,12 +31,12 @@ void sig_handler(int signo)
             return;
         }
 
-        // ret = pthread_detach(tcpTids);
-        // if (ret != 0)
-        // {
-        //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-        //     return;
-        // }
+        ret = pthread_detach(tcpTids);
+        if (ret != 0)
+        {
+            fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+            return;
+        }
 
         // printf("waiting message...\n");
     }
@@ -117,19 +121,8 @@ int tcpLink()
 
 int sendTcp(void *data, int length)
 {
-    struct timeval tv_begin, tv_end, tresult;
-
-    gettimeofday(&tv_begin, NULL);
-
     int sendrt = send(clientSocket, data, length, 0);
     // printf("sendrt:%d\n", sendrt);
-
-    gettimeofday(&tv_end, NULL);
-    timersub(&tv_end, &tv_begin, &tresult);
-
-    double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000;      //  精确到秒
-    double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
-    // printf("timeuse in ms: %f \n", timeuse_ms);
 
     return 0;
 }

@@ -21,6 +21,10 @@
 
 #include "tcpserver.h"
 
+// TODO:
+// thread exit
+// gcc lib not installed
+// tcp thread
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
@@ -187,10 +191,22 @@ int init_reg_dev()
 
 void mtcpsend(ippack *tcppack)
 {
+    struct timeval tv_begin, tv_end, tresult;
+
+    gettimeofday(&tv_begin, NULL);
+
     sendTcp(tcppack->pack, tcppack->size);
     // pthread_exit(NULL);
+
+    gettimeofday(&tv_end, NULL);
+    timersub(&tv_end, &tv_begin, &tresult);
+
+    double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000;      //  精确到秒
+    double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
+    // printf("timeuse in ms: %f \n", timeuse_ms);
 }
 
+long d1 = 0;
 void rece_cb(int channelid, void *data)
 {
     gw_WriteReg(0xA0010004, 0x0);
@@ -216,24 +232,33 @@ void rece_cb(int channelid, void *data)
             return;
         }
 
-        // ret = pthread_detach(tids);
-        // if (ret != 0)
-        // {
-        //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-        //     return;
-        // }
+        ret = pthread_detach(tids);
+        if (ret != 0)
+        {
+            fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+            return;
+        }
     }
 
-    // if (*((long *)(rx_buf_tmp)) != 0x0001000002000100)
-    // {
-    //     for (int i = 0; i < 4096 + 10; ++i)
-    //     {
-    //         printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
-    //         *((long *)(rx_buf_tmp + i)) = 0;
-    //     }
-    // }
+    if (rx_buf_tmp[0] != d1 + 0x0100)
+    {
+        printf("d1: %016lx, now: %016lx\n\n", d1, rx_buf_tmp[0]);
+        d1 = rx_buf_tmp[0];
 
-    // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
+        for (int i = 0; i < 10; ++i)
+        {
+            printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
+            *((long *)(rx_buf_tmp + i)) = 0;
+        }
+        printf("\n\n\n");
+    }else{
+        d1 = rx_buf_tmp[0];
+        printf("ok:%016lx\n",d1);
+    }
+
+    if(d1 == 0x02000){
+        d1 = 0x0;
+    }
 
     waitFlag = 0;
 }
@@ -305,8 +330,6 @@ int main(int argc, char **argv)
     printf("\tTRANS_SIZE:%d \n", TRANS_SIZE);
     printf("\tReceive Buffer Size: %ld MByte\n", BYTE_TO_MIB(rx_size));
 
-    initRingbuffer();
-
     tcpInit();
 
     pthread_t tcpTids;
@@ -317,12 +340,12 @@ int main(int argc, char **argv)
         goto free_rx_buf;
     }
 
-    // ret = pthread_detach(tcpTids);
-    // if (ret != 0)
-    // {
-    //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-    //     goto free_rx_buf;
-    // }
+    ret = pthread_detach(tcpTids);
+    if (ret != 0)
+    {
+        fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+        goto free_rx_buf;
+    }
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
