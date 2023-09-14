@@ -29,8 +29,6 @@
 #define TRANS_SIZE 4096 * 64 * 64 / 8
 #define BUFFER_SIZE_MAX TRANS_SIZE * 2
 
-#define CIRCLE_SIZE_LONG 4096 * 5
-
 typedef struct ippack
 {
     void *pack;
@@ -50,13 +48,6 @@ void gw_WriteReg(unsigned int addr, int dat);
 int gw_ReadReg(unsigned int addr);
 int printDMAReg();
 void rece_cb(int channelid, void *data);
-// ring buffer
-void initRingbuffer(void);
-int wirteRingbuffer(long *buffer, int addLen);
-int readRingbuffer(long *buffer, int len);
-int getRingbufferValidLen(void);
-void releaseRingbuffer(void);
-void mtcpsend(ippack *tcppack);
 
 /*----------------------------------------------------------------------------
  * Variable Declaration
@@ -70,137 +61,9 @@ void *map_base_apb;
 
 int resetFlag = 0;
 
-static int validLen;            // 已使用的数据长度
-static long *pHead = NULL;      // 环形存储区的首地址
-static long *pTail = NULL;      // 环形存储区的结尾地址
-static long *pValid = NULL;     // 已使用的缓冲区的首地址
-static long *pValidTail = NULL; // 已使用的缓冲区的尾地址
-
 /*----------------------------------------------------------------------------
  * Function
  *----------------------------------------------------------------------------*/
-
-void initRingbuffer(void)
-{
-    if (pHead == NULL)
-    {
-        pHead = (long *)malloc(CIRCLE_SIZE_LONG * sizeof(long));
-    }
-    pValid = pValidTail = pHead;
-    pTail = pHead + CIRCLE_SIZE_LONG;
-    validLen = 0;
-}
-
-/*
- * function:向缓冲区中写入数据
- * param:@buffer 写入的数据指针
- *       @addLen 写入的数据长度,in long
- * return:-1:写入长度过大
- *        -2:缓冲区没有初始化
- * */
-int wirteRingbuffer(long *buffer, int addLen)
-{
-    if (addLen > CIRCLE_SIZE_LONG)
-        return -2;
-    if (pHead == NULL)
-        return -1;
-    assert(buffer);
-
-    // 将要存入的数据copy到pValidTail处
-    if (pValidTail + addLen > pTail) // 需要分成两段copy
-    {
-        int len1 = pTail - pValidTail;
-        int len2 = addLen - len1;
-        memcpy(pValidTail, buffer, len1);
-        memcpy(pHead, buffer + len1, len2);
-        pValidTail = pHead + len2; // 新的有效数据区结尾指针
-    }
-    else
-    {
-        memcpy(pValidTail, buffer, addLen);
-        pValidTail += addLen; // 新的有效数据区结尾指针
-    }
-
-    // 需重新计算已使用区的起始位置
-    if (validLen + addLen > CIRCLE_SIZE_LONG)
-    {
-        int moveLen = validLen + addLen - CIRCLE_SIZE_LONG; // 有效指针将要移动的长度
-        if (pValid + moveLen > pTail)                       // 需要分成两段计算
-        {
-            int len1 = pTail - pValid;
-            int len2 = moveLen - len1;
-            pValid = pHead + len2;
-        }
-        else
-        {
-            pValid = pValid + moveLen;
-        }
-        validLen = CIRCLE_SIZE_LONG;
-    }
-    else
-    {
-        validLen += addLen;
-    }
-
-    return 0;
-}
-
-/*
- * function:从缓冲区内取出数据
- * param   :@buffer:接受读取数据的buffer
- *          @len:将要读取的数据的长度
- * return  :-1:没有初始化
- *          >0:实际读取的长度
- * */
-int readRingbuffer(long *buffer, int len)
-{
-    if (pHead == NULL)
-        return -1;
-
-    assert(buffer);
-
-    if (validLen == 0)
-        return 0;
-
-    if (len > validLen)
-        len = validLen;
-
-    if (pValid + len > pTail) // 需要分成两段copy
-    {
-        int len1 = pTail - pValid;
-        int len2 = len - len1;
-        memcpy(buffer, pValid, len1);       // 第一段
-        memcpy(buffer + len1, pHead, len2); // 第二段，绕到整个存储区的开头
-        pValid = pHead + len2;              // 更新已使用缓冲区的起始
-    }
-    else
-    {
-        memcpy(buffer, pValid, len);
-        pValid = pValid + len; // 更新已使用缓冲区的起始
-    }
-    validLen -= len; // 更新已使用缓冲区的长度
-
-    return len;
-}
-
-/*
- * function:获取已使用缓冲区的长度
- * return  :已使用的buffer长度
- * */
-int getRingbufferValidLen(void)
-{
-    return validLen;
-}
-
-/*
- * function:释放环形缓冲区
- * */
-void releaseRingbuffer(void)
-{
-    if (pHead != NULL)
-        free(pHead);
-    pHead = NULL;
-}
 
 /*
  * init arguments
@@ -339,31 +202,6 @@ void rece_cb(int channelid, void *data)
         printf("callback\n");
     }
 
-    // if (getRingbufferValidLen() > 0)
-    // {
-    //     udppack udpk;
-    //     udpk.pack = pValid;
-    //     udpk.size = TRANS_SIZE;
-
-    //     pthread_t tids;
-    //     int ret = pthread_create(&tids, NULL, (void *)mudpsend, &udpk);
-
-    //     if (ret != 0)
-    //     {
-    //         printf("pthread_create error: error_code=%d", ret);
-    //         return;
-    //     }
-
-    //     ret = pthread_detach(tids);
-    //     if (ret != 0)
-    //     {
-    //         fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-    //         return;
-    //     }
-    // }
-
-    // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
-
     if (linkFlag)
     {
         ippack tcppk;
@@ -420,11 +258,6 @@ int printDMAReg()
         // printf("reg ok\n");
         return 0;
     }
-
-    // printf("58 : 0x%x \n", gw_ReadReg(0xA0000058));
-    // printf("30 : 0x%x \n", gw_ReadReg(0xA0000030));
-    // printf("34 : 0x%x \n", gw_ReadReg(0xA0000034));
-    // printf("48 : 0x%x \n", gw_ReadReg(0xA0000048));
 }
 
 /*----------------------------------------------------------------------------
@@ -580,7 +413,6 @@ free_rx_buf:
     axidma_free(axidma_dev, rx_buf, rx_size);
     axidma_destroy(axidma_dev);
 ret:
-    releaseRingbuffer();
     releaseTcp();
     return rc;
 }
