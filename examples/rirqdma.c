@@ -64,8 +64,8 @@ void *map_base_dma;
 void *map_base_apb;
 
 int resetFlag = 0;
-
 int packetflag = 0;
+int udp_blank_ctrl = 1;
 
 /*----------------------------------------------------------------------------
  * Function
@@ -230,7 +230,7 @@ void mudpsend(ippack *udppack)
 
     for (int i = 0; i < len; ++i)
     {
-        head[i] = data + 1320 * i; // point to packet start
+        head[i] = data + 1320/8 * i; // point to packet start
 
         if (i % 2 == 0)
         { // change constellation or speed
@@ -245,7 +245,14 @@ void mudpsend(ippack *udppack)
         *(head[i] + 1) = define_head[index_define_head + i / 2];
 
         udp_send(head[i], 1320);
+
+        for (int k = 0; k < 3; ++k)
+        {
+            printf("data in %d,%016lx\n", k, *(head[i] + k));
+        }
+        printf("\n");
     }
+    printf("\n");
 
     // // pthread_exit(NULL);
 
@@ -269,6 +276,13 @@ void rece_cb(int channelid, void *data)
         printf("callback\n");
     }
 
+    if (!udp_blank_ctrl)
+    {
+        waitFlag = 0;
+        return;
+    }
+    udp_blank_ctrl = 0;
+
     ippack udppk;
     udppk.pack = data;
     if (packetflag < 4 && packetflag > 0)
@@ -280,20 +294,23 @@ void rece_cb(int channelid, void *data)
         udppk.size = 1320 * 64 * 6 / 8;
     }
     pthread_t tids;
-    int ret = pthread_create(&tids, NULL, (void *)mudpsend, &udppk);
-    if (ret != 0)
-    {
-        printf("pthread_create error: error_code=%d", ret);
-        waitFlag = 0;
-        return;
-    }
+    // int ret = pthread_create(&tids, NULL, (void *)mudpsend, &udppk);
+    // if (ret != 0)
+    // {
+    //     printf("pthread_create error: error_code=%d", ret);
+    //     waitFlag = 0;
+    //     return;
+    // }
 
-    ret = pthread_detach(tids);
-    if (ret != 0)
-    {
-        fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-        return;
-    }
+    // ret = pthread_detach(tids);
+    // if (ret != 0)
+    // {
+    //     fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+    //     waitFlag = 0;
+    //     return;
+    // }
+
+    mudpsend(&udppk);
 
     // //to confirm data between pl and ps
 
@@ -356,7 +373,7 @@ int main(int argc, char **argv)
     const array_t *rx_chans;
     int trans_count = 0;
 
-    printf("Enter main v7.0 double division graph\n");
+    printf("Enter main v8.0 machine box\n");
 
     if (parse_args(argc, argv) < 0)
     {
@@ -452,10 +469,26 @@ int main(int argc, char **argv)
         printf("after submit first trans\n");
     }
 
+    struct timeval tv_begin_s, tv_end_s, tresult_s;
+    gettimeofday(&tv_begin_s, NULL);
+    double timeuse_ms_s;
+
     while (1)
     {
         while (waitFlag)
         {
+        }
+
+        gettimeofday(&tv_end_s, NULL);
+        timersub(&tv_end_s, &tv_begin_s, &tresult_s);
+        timeuse_ms_s = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
+        if (timeuse_ms_s > 500)
+        {
+            if (!udp_blank_ctrl)
+            {
+                udp_blank_ctrl = 1;
+            }
+            gettimeofday(&tv_begin_s, NULL);
         }
 
         if (printDMAReg() < 0)
