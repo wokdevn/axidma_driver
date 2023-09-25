@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 
 #define DEST_PORT 5001
-#define DSET_IP_ADDRESS  "192.168.0.27"
+#define DEST_IP_ADDRESS  "192.168.1.126"
 #define LOCAL_PORT 1234
 
 /* socket文件描述符 */
@@ -16,3 +16,4 @@ struct sockaddr_in addr_dest, addr_local;
 
 int udp_send(void *buf, int size);
 int udp_init();
+int udp_release();

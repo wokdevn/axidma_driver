@@ -18,8 +18,8 @@
 #include "libaxidma.h"  // Interface to the AXI DMA
 #include "util.h"       // Miscellaneous utilities
 #include "conversion.h" // Miscellaneous conversion utilities
-
-#include "tcpserver.h"
+#include "udpsend.h"
+#include "constel_head.h"
 
 // TODO:
 // thread exit
@@ -65,6 +65,8 @@ void *map_base_apb;
 
 int resetFlag = 0;
 
+int packetflag = 0;
+
 /*----------------------------------------------------------------------------
  * Function
  *----------------------------------------------------------------------------*/
@@ -84,12 +86,24 @@ static int parse_args(int argc, char **argv)
 {
     char option;
 
-    while ((option = getopt(argc, argv, "r")) != (char)-1)
+    while ((option = getopt(argc, argv, "rabcd")) != (char)-1)
     {
         switch (option)
         {
         case 'r':
             resetFlag = 1;
+            break;
+        case 'a':
+            packetflag = 1;
+            break;
+        case 'b':
+            packetflag = 2;
+            break;
+        case 'c':
+            packetflag = 3;
+            break;
+        case 'd':
+            packetflag = 4;
             break;
         default:
             return 0;
@@ -189,21 +203,58 @@ int init_reg_dev()
     return 0;
 }
 
-void mtcpsend(ippack *tcppack)
+void mudpsend(ippack *udppack)
 {
-    struct timeval tv_begin, tv_end, tresult;
+    // struct timeval tv_begin, tv_end, tresult;
 
-    gettimeofday(&tv_begin, NULL);
+    // gettimeofday(&tv_begin, NULL);
+    long *data = udppack->pack;
+    int len;
 
-    sendTcp(tcppack->pack, tcppack->size);
-    // pthread_exit(NULL);
+    if (packetflag < 4 && packetflag > 0)
+    {
+        len = 8;
+    }
+    else if (packetflag == 4)
+    {
+        len = 6;
+    }
+    else
+    {
+        printf("packet flag error\n");
+        return;
+    }
 
-    gettimeofday(&tv_end, NULL);
-    timersub(&tv_end, &tv_begin, &tresult);
+    long *head[8] = {0};
+    int index_define_head = (packetflag - 1) * 4;
 
-    double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000;      //  精确到秒
-    double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
-    // printf("timeuse in ms: %f \n", timeuse_ms);
+    for (int i = 0; i < len; ++i)
+    {
+        head[i] = data + 1320 * i; // point to packet start
+
+        if (i % 2 == 0)
+        { // change constellation or speed
+            *(head[i]) = HEAD_CONSTEL;
+        }
+        else
+        {
+            *(head[i]) = HEAD_SPEED;
+        }
+
+        // change index
+        *(head[i] + 1) = define_head[index_define_head + i / 2];
+
+        udp_send(head[i], 1320);
+    }
+
+    // // pthread_exit(NULL);
+
+    // gettimeofday(&tv_end, NULL);
+    // timersub(&tv_end, &tv_begin, &tresult);
+
+    // double timeuse_s = tresult.tv_sec + (1.0 * tresult.tv_usec) / 1000000;      //  精确到秒
+    // double timeuse_ms = tresult.tv_sec * 1000 + (1.0 * tresult.tv_usec) / 1000; //  精确到毫秒
+    // // printf("timeuse in ms: %f \n", timeuse_ms);
 }
 
 long d1 = 0;
@@ -218,26 +269,30 @@ void rece_cb(int channelid, void *data)
         printf("callback\n");
     }
 
-    if (linkFlag)
+    ippack udppk;
+    udppk.pack = data;
+    if (packetflag < 4 && packetflag > 0)
     {
-        ippack tcppk;
-        tcppk.pack = data;
-        tcppk.size = 4096 * 64 / 8;
-        pthread_t tids;
-        int ret = pthread_create(&tids, NULL, (void *)mtcpsend, &tcppk);
-        if (ret != 0)
-        {
-            printf("pthread_create error: error_code=%d", ret);
-            waitFlag = 0;
-            return;
-        }
+        udppk.size = 1320 * 64 * 8 / 8; //----1320 packet 64 width 8 packet 8 byte
+    }
+    else if (packetflag == 4)
+    {
+        udppk.size = 1320 * 64 * 6 / 8;
+    }
+    pthread_t tids;
+    int ret = pthread_create(&tids, NULL, (void *)mudpsend, &udppk);
+    if (ret != 0)
+    {
+        printf("pthread_create error: error_code=%d", ret);
+        waitFlag = 0;
+        return;
+    }
 
-        ret = pthread_detach(tids);
-        if (ret != 0)
-        {
-            fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-            return;
-        }
+    ret = pthread_detach(tids);
+    if (ret != 0)
+    {
+        fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
+        return;
     }
 
     // //to confirm data between pl and ps
@@ -309,6 +364,12 @@ int main(int argc, char **argv)
         goto ret;
     }
 
+    if (packetflag == 0)
+    {
+        printf("please name the machine\n");
+        goto ret;
+    }
+
     init_reg_dev();
 
     // reset
@@ -333,22 +394,7 @@ int main(int argc, char **argv)
     printf("\tTRANS_SIZE:%d \n", TRANS_SIZE);
     printf("\tReceive Buffer Size: %ld MByte\n", BYTE_TO_MIB(rx_size));
 
-    tcpInit();
-
-    pthread_t tcpTids;
-    int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
-    if (ret != 0)
-    {
-        printf("tcp link pthread_create error: error_code=%d", ret);
-        goto free_rx_buf;
-    }
-
-    ret = pthread_detach(tcpTids);
-    if (ret != 0)
-    {
-        fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-        goto free_rx_buf;
-    }
+    udp_init();
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
@@ -439,6 +485,6 @@ free_rx_buf:
     axidma_free(axidma_dev, rx_buf, rx_size);
     axidma_destroy(axidma_dev);
 ret:
-    releaseTcp();
+    udp_release();
     return rc;
 }

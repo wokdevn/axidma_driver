@@ -12,7 +12,7 @@ int udp_init()
 
     memset(&addr_dest, 0, sizeof(addr_dest));
     addr_dest.sin_family = AF_INET;
-    addr_dest.sin_addr.s_addr = inet_addr(DSET_IP_ADDRESS);
+    addr_dest.sin_addr.s_addr = inet_addr(DEST_IP_ADDRESS);
     addr_dest.sin_port = htons(DEST_PORT);
 
     addr_local.sin_family = AF_INET;
