@@ -240,25 +240,28 @@ void rece_cb(int channelid, void *data)
         }
     }
 
-    if (rx_buf_tmp[0] != d1 + 0x0100)
-    {
-        printf("d1: %016lx, now: %016lx\n\n", d1, rx_buf_tmp[0]);
-        d1 = rx_buf_tmp[0];
+    // //to confirm data between pl and ps
 
-        for (int i = 0; i < 10; ++i)
-        {
-            printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
-            *((long *)(rx_buf_tmp + i)) = 0;
-        }
-        printf("\n\n\n");
-    }else{
-        d1 = rx_buf_tmp[0];
-        printf("ok:%016lx\n",d1);
-    }
+    // if (rx_buf_tmp[0] != d1 + 0x0100)
+    // {
+    //     printf("d1: %016lx, now: %016lx\n\n", d1, rx_buf_tmp[0]);
+    //     d1 = rx_buf_tmp[0];
 
-    if(d1 == 0x02000){
-        d1 = 0x0;
-    }
+    //     for (int i = 0; i < 10; ++i)
+    //     {
+    //         printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
+    //         *((long *)(rx_buf_tmp + i)) = 0;
+    //     }
+    //     printf("\n\n\n");
+    // }else{
+    //     d1 = rx_buf_tmp[0];
+    //     printf("ok:%016lx\n",d1);
+    //     printf("data[1]:%016lx\n",rx_buf_tmp[1]);
+    // }
+
+    // if(d1 == 0x02000){
+    //     d1 = 0x0;
+    // }
 
     waitFlag = 0;
 }

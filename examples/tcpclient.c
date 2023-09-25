@@ -11,7 +11,7 @@ int main()
     struct sockaddr_in serverAddr;
     memset(&serverAddr, 0, sizeof(serverAddr)); // 每个字节都用0填充
     char sendbuf[200];
-    long recvbuf[4096];
+    long recvbuf[4096*5];
     int iDataNum;
     if ((clientSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
@@ -58,6 +58,12 @@ int main()
                     printf("i:%d, data:%016lx\n", i, *((long *)(recvbuf + i)));
                     *((long *)(recvbuf + i)) = 0;
                 }
+
+                for (int i = 10; i >= 0; --i)
+                {
+                    printf("i:%d, data:%016lx\n", iDataNum/8 - (i + 1), *((long *)(recvbuf + (iDataNum/8 - i - 1))));
+                }
+
                 printf("\n\n\n");
             }
             else

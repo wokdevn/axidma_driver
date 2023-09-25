@@ -2,17 +2,21 @@
 
 void waitlink()
 {
+    linkFlag = 0;
+
     clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, (socklen_t *)&addr_len);
     if (clientSocket < 0)
     {
         // perror("accept");
-        printf("clientSocket < 0 %d\n",clientSocket);
+        printf("clientSocket < 0 %d\n", clientSocket);
         perror("new accept error:");
         // pthread_exit(NULL);
     }
 
     printf("IP is %s\n", inet_ntoa(clientAddr.sin_addr));
     printf("Port is %d\n", htons(clientAddr.sin_port));
+
+    linkFlag = 1;
 
     // pthread_exit(NULL);
 }
@@ -122,13 +126,17 @@ int tcpLink()
 int sendTcp(void *data, int length)
 {
     int sendrt = send(clientSocket, data, length, 0);
-    // printf("sendrt:%d\n", sendrt);
+    if (sendrt != length)
+    {
+        printf("sendrt:%d, length:%d\n", sendrt,length);
+    }
 
     return 0;
 }
 
 int releaseTcp()
 {
+    linkFlag = 0;
     close(clientSocket);
     close(serverSocket);
     return 0;
