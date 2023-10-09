@@ -488,7 +488,7 @@ int main(int argc, char **argv)
         gettimeofday(&tv_end_s, NULL);
         timersub(&tv_end_s, &tv_begin_s, &tresult_s);
         timeuse_ms_s = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
-        if (timeuse_ms_s > 500)
+        if (timeuse_ms_s > 100)
         {
             if (!udp_blank_ctrl)
             {
