@@ -30,7 +30,7 @@
  *----------------------------------------------------------------------------*/
 
 // The size of data to send per transfer, in byte
-#define TRANS_SIZE 4096 * 64 * 64 / 8
+#define TRANS_SIZE 4096 * 64 / 8
 #define BUFFER_SIZE_MAX TRANS_SIZE * 2
 
 typedef struct ippack
@@ -331,9 +331,15 @@ void rece_cb(int channelid, void *data)
     //     printf("data[1]:%016lx\n",rx_buf_tmp[1]);
     // }
 
-    // if(d1 == 0x02000){
-    //     d1 = 0x0;
+    // wirteRingbuffer(rx_buf_tmp, TRANS_SIZE / 8);
+
+    // for (int i = 0; i < 4096+10; ++i)
+    // {
+    //     printf("i:%d, data:%016lx\n", i, *((long *)(rx_buf_tmp + i)));
+    //     *((long *)(rx_buf_tmp + i))=0;
     // }
+
+    // printf("\nINFO: callback func triggerd,channelid: %d \n", channelid);
 
     waitFlag = 0;
 }
