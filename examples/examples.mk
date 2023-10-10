@@ -19,7 +19,7 @@ include library/library.mk
 EXAMPLES_DIR = examples
 EXAMPLES_FILES = axidma_benchmark.c axidma_display_image.c axidma_transfer.c \
 					test_axidma.c axidma_test.c dma_uart.c interdma.c mgpio.c \
-					irqdma.c rirqdma.c  tcpclient.c resetgraph.c
+					irqdma.c program.c  tcpclient.c resetgraph.c
 
 # The variations of specific targets for the example programs
 EXAMPLES_TARGETS = $(EXAMPLES_FILES:%.c=%)
