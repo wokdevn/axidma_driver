@@ -18,29 +18,55 @@
 #include "util.h"       // Miscellaneous utilities
 #include "conversion.h" // Miscellaneous conversion utilities
 
+#include "udpsend.h"
+
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
-#define TRANS_NUM 4096
+#define TRANS_NUM 165 * 4
 #define DATA_WIDTH 64
 #define TRANS_SIZE (int)(TRANS_NUM * DATA_WIDTH / 8 * sizeof(char))
 
 #define BUF_SIZE TRANS_SIZE * 5
 
+#define LOCAL_PORT 1234
+#define DEST_PORT 5001
+#define DEST_IP "192.168.0.126"
+
 void rxcall(int channelid, void *p);
 static int init_args(int *rx_channel, size_t *rx_size);
+void cleanbuf(void *buf, int len);
 
 int rxnum = 0;
 int waitflag = 1;
+int udpflag = 1;
 
 void rxcall(int channelid, void *p)
 {
     rxnum++;
     printf("enter rx call, rxnum:%d\n", rxnum);
 
-    long *index = (long *)p;
-    printf("0:%016lx    4094:%016lx    4095:%016lx    4100:%016lx\n", index[0], index[4094], index[4095], index[4100]);
+    if (!udpflag)
+    {
+        cleanbuf(p, BUF_SIZE);
+        waitflag = 0;
+        return;
+    }
 
+    long *index = (long *)p;
+    printf("0:%016lx    165:%016lx    165*2:%016lx    165*3:%016lx\n", index[0], index[165], index[165 * 2], index[165 * 3]);
+    for (int j = 0; j < 165 * 7; j += 165)
+    {
+        for (int i = j; i < j + 5; ++i)
+        {
+            printf("%04d:%016lx\n", i, index[i]);
+        }
+    }
+
+    udp_send((void*)(index+165 * 3),TRANS_SIZE/4);
+    udpflag = 0;
+
+    cleanbuf(p, BUF_SIZE);
     printf("\n\n");
     waitflag = 0;
 }
@@ -57,6 +83,12 @@ static int init_args(int *rx_channel, size_t *rx_size)
     return 0;
 }
 
+void cleanbuf(void *buf, int len)
+{
+    char *p = (char *)buf;
+    memset(p, 0, len);
+}
+
 /*----------------------------------------------------------------------------
  * Main Function
  *----------------------------------------------------------------------------*/
@@ -70,6 +102,8 @@ int main(int argc, char **argv)
     const array_t *rx_chans;
 
     printf("Enter main v6.0 irq axidma test\n");
+
+    udp_send_init(LOCAL_PORT, DEST_PORT, DEST_IP);
 
     // Check if the user overrided the default transfer size and number
     // just pay attention to size
@@ -114,12 +148,29 @@ int main(int argc, char **argv)
 
     printf("s2mm start\n");
     axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, rx_size, false);
+
+    struct timeval tv_begin_s, tv_end_s, tresult_s;
+    gettimeofday(&tv_begin_s, NULL);
+    double timeuse_ms_s;
+
     while (1)
     {
         while (waitflag)
         {
         }
         waitflag = 1;
+
+        gettimeofday(&tv_end_s, NULL);
+        timersub(&tv_end_s, &tv_begin_s, &tresult_s);
+        timeuse_ms_s = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
+        if (timeuse_ms_s > 100)
+        {
+            if (!udpflag)
+            {
+                udpflag = 1;
+            }
+            gettimeofday(&tv_begin_s, NULL);
+        }
 
         axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, rx_size, false);
     }

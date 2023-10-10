@@ -1,6 +1,6 @@
 #include "udpsend.h"
 
-int udp_init()
+int udp_send_init(int localport, int destport,const char* destip)
 {
     /* 建立udp socket */
     sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -12,11 +12,11 @@ int udp_init()
 
     memset(&addr_dest, 0, sizeof(addr_dest));
     addr_dest.sin_family = AF_INET;
-    addr_dest.sin_addr.s_addr = inet_addr(DEST_IP_ADDRESS);
-    addr_dest.sin_port = htons(DEST_PORT);
+    addr_dest.sin_addr.s_addr = inet_addr((const char*)destip);
+    addr_dest.sin_port = htons(destport);
 
     addr_local.sin_family = AF_INET;
-    addr_local.sin_port = htons(LOCAL_PORT);
+    addr_local.sin_port = htons(localport);
     addr_local.sin_addr.s_addr = 0;
 
     int ret = 0;

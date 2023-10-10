@@ -6,14 +6,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define DEST_PORT 5001
-#define DEST_IP_ADDRESS  "192.168.1.126"
-#define LOCAL_PORT 1234
-
 /* socket文件描述符 */
 int sock_fd;
 struct sockaddr_in addr_dest, addr_local;
 
 int udp_send(void *buf, int size);
-int udp_init();
-int udp_release();
+int udp_send_init(int localport, int destport,const char* destip);
+int udp_send_release();
