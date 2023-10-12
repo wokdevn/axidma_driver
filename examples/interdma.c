@@ -86,8 +86,8 @@ struct udpmm2s
     struct axidma_video_frame *tx_frame;
 };
 
-void txcall(void *p);
-void rxcall(void *data);
+void txcall(int id, void *p);
+void rxcall(int id, void *data);
 static int init_args(int *tx_channel, int *rx_channel, size_t *tx_size, size_t *rx_size);
 static void init_tx_data(char *tx_buf, size_t tx_buf_size);
 static void clean_tx_data(char *tx_buf, size_t tx_buf_size);
@@ -99,20 +99,18 @@ static void print_usage(int help);
 static int parse_args(int argc, char **argv);
 void *gpiocontrol();
 
-void txcall(void *p)
+void txcall(int id, void *p)
 {
     txnum++;
-    printf("enter tx call, tx num:%d\n", txnum);
     tx_wait_flag = 0;
 }
 
-void rxcall(void *data)
+void rxcall(int id, void *data)
 {
     rxnum++;
-    printf("enter rx call, rxnum:%d\n", rxnum);
 
-    // int ldpcnum = 0;
-    // getInfo(data, &ldpcnum);
+    int ldpcnum = 0;
+    getInfo(data, &ldpcnum);
 
     rx_wait_flag = 0;
 }
@@ -216,8 +214,8 @@ static int random_mm2s(mm2s_f *msf)
     int cal_u = DATA_MAX * modu_cal;
     int cal_d = DATA_TR(mb);
 
-    printf("mm2s cal, DATA_MAX : %d, modu_cal : %d, mb : %d, cal_d : %d\n",
-           DATA_MAX, modu_cal, mb, cal_d);
+    // printf("mm2s cal, DATA_MAX : %d, modu_cal : %d, mb : %d, cal_d : %d\n",
+    //        DATA_MAX, modu_cal, mb, cal_d);
 
     int ldpc_num;
 
@@ -266,19 +264,19 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     msf.ldpcNum = 89;
     msf.Mb = 7;
     msf.modulation = QPSK;
-    printf("mm2s ldpc num:%d\n", msf.ldpcNum);
-    printf("mm2s mb:%d\n", msf.Mb);
-    printf("mm2s modu:%d", msf.modulation);
+    // printf("mm2s ldpc num:%d\n", msf.ldpcNum);
+    // printf("mm2s mb:%d\n", msf.Mb);
+    // printf("mm2s modu:%d", msf.modulation);
     char pack[HEAD_SIZE] = {0};
     char pack_r[HEAD_SIZE] = {0};
     constrM2S(&msf, (char *)(&pack));
 
-    printf("\nmm2s first: 0x");
-    for (int i = 0; i < HEAD_SIZE; ++i)
-    {
-        printf("%02x", pack[i]);
-    }
-    printf("\n");
+    // printf("\nmm2s first: 0x");
+    // for (int i = 0; i < HEAD_SIZE; ++i)
+    // {
+    //     printf("%02x", pack[i]);
+    // }
+    // printf("\n");
 
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
@@ -294,13 +292,13 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     p_tx_buf = p_tx_buf + index;
 
     int datalen_inbit = msf.ldpcNum * LDPC_K; // 501248
-    printf("datalen_inbit:%d\n", datalen_inbit);
+    // printf("datalen_inbit:%d\n", datalen_inbit);
 
     // 62656
     int datalen_inbyte = (datalen_inbit % 8 == 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
-    printf("datalen_inbyte:%d\n", datalen_inbyte);
+    // printf("datalen_inbyte:%d\n", datalen_inbyte);
 
-    printf("size of long:%ld\n", sizeof(long));
+    // printf("size of long:%ld\n", sizeof(long));
     init_tx_data(p_tx_buf, datalen_inbyte);
 
 #ifdef PRINT_MM2S_INIT
@@ -327,8 +325,8 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     }
 #endif
 
-    usleep(USLEEP * 1);
-    printf("usleep:%d\n", USLEEP);
+    // usleep(USLEEP * 1);
+    // printf("usleep:%d\n", USLEEP);
 
     axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
 
@@ -712,6 +710,8 @@ int main(int argc, char **argv)
         while (rx_wait_flag)
         {
         }
+        // int ldpcnum = 0;
+        // getInfo(rx_buf, &ldpcnum);
         rx_wait_flag = 1;
         axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUF_SIZE, false);
     }
