@@ -12,12 +12,12 @@
 #include <sys/time.h>  // Timing functions and definitions
 #include <getopt.h>    // Option parsing
 #include <errno.h>     // Error codes
+#include <pthread.h>
 
 #include "libaxidma.h"  // Interface to the AXI DMA
 #include "util.h"       // Miscellaneous utilities
 #include "conversion.h" // Miscellaneous conversion utilities
 
-#include "udprecv.h"
 #include "udpsend.h"
 #include "interdma.h"
 #include "util_interdma.h"
@@ -26,12 +26,17 @@
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
+// packet header size in byte
 #define HEAD_SIZE 8 // 8byte
 
+// when ldpc in max num, data size
 #define MAX_DATA_NUM (LDPC_K * ((2 << 8) - 1))            // in bit
 #define MAX_SIZE ((int)(sizeof(char) * MAX_DATA_NUM / 8)) // in byte
 
+// tx rx buf size
 #define BUF_SIZE MAX_SIZE * 2
+
+// --- example data head
 
 // modu:11, mb:9, ldpcnum:15
 // bin: 0001 0000, 0010 0000, 0011 0000, 0100 0000, 0101 "11""00, 1001" "0000, 0111 1"000, 1000 0000,
@@ -43,38 +48,43 @@
 // #define TEST_DATA 0x102030405"8"607080
 #define TEST_DATA_S2MM 0x01203004fc806880
 
+// --- example data head end
+
+// fixed param
 #define CHANNEL_CORRECT_GROUP 69
 #define DATA_EQU_BLOCK 10
 #define MODU_CHARACTOR 448
 #define DATA_MAX MODU_CHARACTOR *(CHANNEL_CORRECT_GROUP * DATA_EQU_BLOCK - 1)
 #define HOLE 512
-#define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 #define LDPC_K 5632
 
-#define USLEEP 1000000
+// data transfer used bits, for ldpc num calculation
+#define DATA_TR(mb) ((mb + 22) * 256 - HOLE)
 
-#define TR_DATA_TEST
-#define TEST_MB 7
-#define TEST_MODU QAM64
+// MB param max
 #define MB_MAX 63
 #define EVM_COUNT 300
-// #define TEST_EDGE
-// #define SKIP
-// #define PRINT_MM2S_INIT
 
-pthread_mutex_t gpio_mutex = PTHREAD_MUTEX_INITIALIZER;
+// decide whether use mm2s test data
+int tr_data_test_flag = 0;
+int test_mb_p, test_modu_p;
 
+// 2, max edge, 1, min edge, 0 random data, minus every time
 int random_flag = 2;
 
-int test_mb_p, test_modu_p;
-int print_evm_p = 0, print_data_p = 0, gpio_ch = 0;
+int print_evm_p = 0, print_data_p = 0;
 
-int evm_flag = 0;
 int txnum = 0;
 int rxnum = 0;
 
+// uesed to confirm every trans start after last time finished
 int tx_wait_flag = 0;
 int rx_wait_flag = 1;
+
+int param_pattern = 0;
+int pattern_flag = 0;
+
+int usleep_time = 1000000;
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -89,15 +99,18 @@ struct udpmm2s
 void txcall(int id, void *p);
 void rxcall(int id, void *data);
 static int init_args(int *tx_channel, int *rx_channel, size_t *tx_size, size_t *rx_size);
-static void init_tx_data(char *tx_buf, size_t tx_buf_size);
-static void clean_tx_data(char *tx_buf, size_t tx_buf_size);
+static void init_tx_buf(char *tx_buf, size_t tx_buf_size);
+static void clean_tx_buf(char *tx_buf, size_t tx_buf_size);
 static int random_mm2s(mm2s_f *msf);
 static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf, int tx_size);
 void getInfo(void *rx_buf, int *lcnum);
-void *udp_recv(void *args);
+void *mm2s_data_recv(void *args);
 static void print_usage(int help);
 static int parse_args(int argc, char **argv);
-void *gpiocontrol();
+void get_MM2S_param(mm2s_f *msf);
+int cal_modu_fac(int modu);
+int check_rx_data(void *data);
+void clean_rx_buf(void *rx_buf, size_t rx_buf_size);
 
 void txcall(int id, void *p)
 {
@@ -108,10 +121,6 @@ void txcall(int id, void *p)
 void rxcall(int id, void *data)
 {
     rxnum++;
-
-    int ldpcnum = 0;
-    getInfo(data, &ldpcnum);
-
     rx_wait_flag = 0;
 }
 
@@ -133,7 +142,8 @@ static int init_args(int *tx_channel, int *rx_channel,
 /* Initialize the tx buffers, filling buffers with a preset
  * pattern. */
 // size in char
-static void init_tx_data(char *tx_buf, size_t tx_buf_size)
+// rize order
+static void init_tx_buf(char *tx_buf, size_t tx_buf_size)
 {
     size_t i;
     long *transmit_buffer;
@@ -159,40 +169,14 @@ static void init_tx_data(char *tx_buf, size_t tx_buf_size)
 
 /* Initialize the tx buffers with 0, filling buffers with a preset
  * pattern. */
-static void clean_tx_data(char *tx_buf, size_t tx_buf_size)
+static void clean_tx_buf(char *tx_buf, size_t tx_buf_size)
 {
-    size_t i;
-    char *transmit_buffer;
-    // two int 8 Byte, means 64bit data
-
-    transmit_buffer = tx_buf;
-
-    // Fill the buffer with integer patterns
-    for (i = 0; i < tx_buf_size; i++)
-    {
-        transmit_buffer[i] = 0;
-    }
-
+    memset(tx_buf, 0, tx_buf_size);
     return;
 }
 
-static int random_mm2s(mm2s_f *msf)
+int cal_modu_fac(int modu)
 {
-    // mod:BPSK,QPSK,16QAM,64QAM
-    // MB:0~63
-    // LDPCNUM:0~362
-
-    // int ldpc_num = randBtw(0, 362);
-    // int mb = randBtw(0, MB_MAX);
-    // int modu = randBtw(1, 3);//bpsk useless, 1, 2, 3 to QPSK 16QAM 64QAM
-
-    int mb, modu;
-
-#ifdef TR_DATA_TEST
-    mb = test_mb_p;
-    modu = test_modu_p;
-#endif
-
     int modu_cal;
     switch (modu)
     {
@@ -211,11 +195,28 @@ static int random_mm2s(mm2s_f *msf)
     default:
         break;
     }
+    return modu_cal;
+}
+
+static int random_mm2s(mm2s_f *msf)
+{
+    // mod:BPSK,QPSK,16QAM,64QAM
+    // MB:0~63
+    // LDPCNUM:0~362
+
+    // int ldpc_num = randBtw(0, 362);
+    // int mb = randBtw(0, MB_MAX);
+    // int modu = randBtw(1, 3);//bpsk useless, 1, 2, 3 to QPSK 16QAM 64QAM
+
+    int mb, modu;
+
+    mb = randBtw(0, MB_MAX);
+    modu = randBtw(1, 3); // bpsk useless, 1, 2, 3 to QPSK 16QAM 64QAM
+
+    int modu_cal = cal_modu_fac(modu);
+
     int cal_u = DATA_MAX * modu_cal;
     int cal_d = DATA_TR(mb);
-
-    // printf("mm2s cal, DATA_MAX : %d, modu_cal : %d, mb : %d, cal_d : %d\n",
-    //        DATA_MAX, modu_cal, mb, cal_d);
 
     int ldpc_num;
 
@@ -237,46 +238,15 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
 
     // Initialize the buffer region we're going to transmit
     // data: all 0
-    clean_tx_data(tx_buf, BUF_SIZE);
+    clean_tx_buf(tx_buf, BUF_SIZE);
 
     mm2s_f msf;
 
-#ifdef TEST_EDGE
-    if (random_flag == 0)
-    {
-        random_mm2s(&msf);
-    }
-    else if (random_flag == 1)
-    {
-        msf.ldpcNum = 16;
-        msf.Mb = 63;
-        msf.modulation = BPSK;
-    }
-    else
-    {
-        msf.ldpcNum = 362;
-        msf.Mb = 0;
-        msf.modulation = QAM64;
-    }
-#else
-    random_mm2s(&msf);
-#endif
-    msf.ldpcNum = 89;
-    msf.Mb = 7;
-    msf.modulation = QPSK;
-    // printf("mm2s ldpc num:%d\n", msf.ldpcNum);
-    // printf("mm2s mb:%d\n", msf.Mb);
-    // printf("mm2s modu:%d", msf.modulation);
+    get_MM2S_param(&msf);
+
     char pack[HEAD_SIZE] = {0};
     char pack_r[HEAD_SIZE] = {0};
     constrM2S(&msf, (char *)(&pack));
-
-    // printf("\nmm2s first: 0x");
-    // for (int i = 0; i < HEAD_SIZE; ++i)
-    // {
-    //     printf("%02x", pack[i]);
-    // }
-    // printf("\n");
 
     // revert in char, trans will revert in char
     // unknown if caused by LSB/MSB, this machine is LSB
@@ -292,66 +262,89 @@ static int mm2s_all_test(axidma_dev_t dev, int tx_channel, void *tx_buf,
     p_tx_buf = p_tx_buf + index;
 
     int datalen_inbit = msf.ldpcNum * LDPC_K; // 501248
-    // printf("datalen_inbit:%d\n", datalen_inbit);
 
     // 62656
     int datalen_inbyte = (datalen_inbit % 8 == 0) ? (datalen_inbit / 8) : (datalen_inbit / 8 + 1);
-    // printf("datalen_inbyte:%d\n", datalen_inbyte);
 
-    // printf("size of long:%ld\n", sizeof(long));
-    init_tx_data(p_tx_buf, datalen_inbyte);
+    init_tx_buf(p_tx_buf, datalen_inbyte);
 
-#ifdef PRINT_MM2S_INIT
-    // show inited data
-    int it = 0;
-    long *index_l = tx_buf;
-    // index_l++;
-    int totalct = (datalen_inbyte % 8 == 0) ? (datalen_inbyte / 8) : (datalen_inbyte / 8 + 1);
-    int ct = totalct;
-    // int ct = 10;
-    while (ct)
-    {
-        printf("mm2s now data %d: %016lx \n", it, *index_l);
-        it++;
-        index_l++;
-        ct--;
-        // if (it == 5)
-        // {
-        //     int skip = totalct-30;
-        //     it += skip;
-        //     index_l += skip;
-        //     ct -= skip;
-        // }
-    }
-#endif
-
-    // usleep(USLEEP * 1);
-    // printf("usleep:%d\n", USLEEP);
+    usleep(usleep_time);
 
     axidma_oneway_transfer(dev, tx_channel, tx_buf, datalen_inbyte + HEAD_SIZE, false);
 
     return rc;
 }
 
-void getInfo(void *rx_buf, int *lcnum)
+void get_MM2S_param(mm2s_f *msf)
 {
-    printf("S2MM INFO: \n");
-    if (rx_buf == NULL)
+    if (tr_data_test_flag)
     {
-        printf("NULL pointer\n");
+        msf->Mb = test_mb_p;
+        msf->modulation = test_modu_p;
+
+        int modu_frac = cal_modu_fac(test_modu_p);
+        int cal_u = DATA_MAX * modu_frac;
+        int cal_d = DATA_TR(test_mb_p);
+
+        msf->ldpcNum = cal_u / cal_d;
+
+        return;
+    }
+    if (pattern_flag)
+    {
+        switch (param_pattern)
+        {
+        case 0:
+            msf->ldpcNum = 89;
+            msf->Mb = 7;
+            msf->modulation = QPSK;
+            break;
+        case 1:
+            msf->ldpcNum = 36;
+            msf->Mb = 46;
+            msf->modulation = QPSK;
+            break;
+        case 2:
+            msf->ldpcNum = 267;
+            msf->Mb = 7;
+            msf->modulation = QAM64;
+            break;
+        case 3:
+            msf->ldpcNum = 178;
+            msf->Mb = 7;
+            msf->modulation = QAM16;
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+    if (random_flag == 2)
+    {
+        msf->ldpcNum = 362;
+        msf->Mb = 0;
+        msf->modulation = QAM64;
+    }
+    else if (random_flag == 1)
+    {
+        msf->ldpcNum = 16;
+        msf->Mb = 63;
+        msf->modulation = BPSK;
     }
     else
     {
-        printf("not null\n");
+        random_mm2s(msf);
     }
+}
+
+void getInfo(void *rx_buf, int *lcnum)
+{
     // get first word
     long *p_l = rx_buf;
 
-    printf("s2mm After trans, data in first word : %016lx \n", *p_l);
-
     long data_s = *p_l;
-    printf("data_S: 0x%lx\n", data_s);
-    print_b(&data_s, sizeof(data_s));
+    // printf("data_S: 0x%lx\n", data_s);
+    // print_b(&data_s, sizeof(data_s));
 
     char charpack_s[8] = {0};
     long2char(data_s, charpack_s);
@@ -362,17 +355,6 @@ void getInfo(void *rx_buf, int *lcnum)
     {
         if (j == 1212)
         {
-            // gpio rst
-            pthread_mutex_lock(&gpio_mutex);
-            setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
-            setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_L);
-            evm_flag = 0;
-
-            setdir(RECEIVE_RESET, SYSFS_GPIO_DIR_OUT);
-            setvalue(RECEIVE_RESET, SYSFS_GPIO_VAL_H);
-            setvalue(RECEIVE_RESET, SYSFS_GPIO_VAL_L);
-            pthread_mutex_unlock(&gpio_mutex);
-
             int it = 0;
             long *index_l = rx_buf;
 
@@ -386,20 +368,11 @@ void getInfo(void *rx_buf, int *lcnum)
                 it++;
                 index_l++;
                 ct--;
-#ifdef SKIP
-                if (it == 5)
-                {
-                    int skip = totalct - 30;
-                    it += skip;
-                    index_l += skip;
-                    ct -= skip;
-                }
-#endif
             }
         }
     }
 
-    if (j == 1234 && !evm_flag)
+    if (j == 1234)
     {
         char bitpack_s[64] = {0};
         char2bit(charpack_s, 8, bitpack_s);
@@ -407,27 +380,20 @@ void getInfo(void *rx_buf, int *lcnum)
         s2mm_f sf;
         getParamS2M(&sf, bitpack_s);
 
-        printf("head:%d\n", j);
-        printf("crc:%d\n", sf.crc_r);
-        printf("ldpc_t:%d\n", sf.ldpc_tnum);
-        printf("amp:%d\n", sf.amp_dresult);
-        printf("modula:%d\n", sf.modu);
-        printf("mb:%d\n", sf.Mb);
-        printf("ldpcnum:%d\n", sf.ldpcnum);
+        // printf("head:%d\n", j);
+        // printf("crc:%d\n", sf.crc_r);
+        // printf("ldpc_t:%d\n", sf.ldpc_tnum);
+        // printf("amp:%d\n", sf.amp_dresult);
+        // printf("modula:%d\n", sf.modu);
+        // printf("mb:%d\n", sf.Mb);
+        // printf("ldpcnum:%d\n", sf.ldpcnum);
 
         *lcnum = sf.ldpcnum;
 
         int bitnum = LDPC_K * sf.ldpcnum;
         int wordnum = (bitnum % 64 == 0 ? (bitnum / 64) : (bitnum / 64 + 1));
 
-        printf("wordnum:%d\n", wordnum);
-
-        // do
-        // {
-        //     rc = axidma_oneway_transfer(dev, rx_channel, rx_buf + HEAD_SIZE, wordnum * 8, true);
-        // } while (rc < 0);
-
-        // printf("head:%d\n", j);
+        // printf("wordnum:%d\n", wordnum);
 
         if (print_data_p)
         {
@@ -445,36 +411,15 @@ void getInfo(void *rx_buf, int *lcnum)
                 it++;
                 index_l++;
                 ct--;
-#ifdef SKIP
-                if (it == 5)
-                {
-                    int skip = totalct - 30;
-                    it += skip;
-                    index_l += skip;
-                    ct -= skip;
-                }
-#endif
             }
-
-            // it = totalct - 10;
-            // index_l = rx_buf + it;
-            // while (it < totalct + 1000)
-            // {
-            //     printf("s2mm now data %d: %016lx \n", it, *index_l);
-            //     it++;
-            //     index_l++;
-            // }
-            // printf("s2mm now data %d: %016lx \n", it, *index_l);
         }
     }
 }
 
-void *udp_recv(void *args)
+void *mm2s_data_recv(void *args)
 {
     struct udpmm2s *arg_thread1;
     arg_thread1 = (struct udpmm2s *)args;
-
-    printf("MM2S ongoing\n\n");
 
     int total = 0;
     while (1)
@@ -496,8 +441,6 @@ void *udp_recv(void *args)
         }
         mm2s_all_test(arg_thread1->axidma_dev, arg_thread1->tx_channel,
                       arg_thread1->tx_buf, arg_thread1->tx_size);
-
-        printf("mm2s send count: %d\n", total);
     }
 
     return 0;
@@ -505,7 +448,9 @@ void *udp_recv(void *args)
 
 static void print_usage(int help)
 {
-    printf("Get Parameter Error\n");
+    printf("mb:0~63\n");
+    printf("modulation:1~3,qpsk,16am,64qam\n");
+    printf("p: param pattern, 0:qpsk,mb=7;  1:qpsk,mb=46;  2:64qam,mb=7;  3:16qam,mb=7\n");
 }
 
 static int parse_args(int argc, char **argv)
@@ -514,11 +459,14 @@ static int parse_args(int argc, char **argv)
     int int_arg;
 
     // b: mb for test, m: modulation for test, e: evm print or not, d: data print or not
-    // g,u: evm gpio control
-    while ((option = getopt(argc, argv, "b:m:edgu")) != (char)-1)
+    // p: param pattern
+    while ((option = getopt(argc, argv, "b:m:edtp:")) != (char)-1)
     {
         switch (option)
         {
+        case 't':
+            tr_data_test_flag = 1;
+            break;
         case 'b':
             if (parse_int(option, optarg, &int_arg) < 0)
             {
@@ -526,6 +474,20 @@ static int parse_args(int argc, char **argv)
                 return -EINVAL;
             }
             test_mb_p = int_arg;
+            break;
+        case 'p':
+            if (parse_int(option, optarg, &int_arg) < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            if (int_arg > 4 || int_arg < 0)
+            {
+                print_usage(false);
+                return -EINVAL;
+            }
+            pattern_flag = 1;
+            param_pattern = int_arg;
             break;
         case 'm':
             if (parse_int(option, optarg, &int_arg) < 0)
@@ -541,15 +503,6 @@ static int parse_args(int argc, char **argv)
         case 'd':
             print_data_p = 1;
             break;
-        case 'g':
-            gpio_ch = 1;
-            break;
-        case 'u':
-            gpio_ch = 0;
-            setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
-            setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_L);
-            evm_flag = 0;
-            break;
         default:
             print_usage(false);
             return -EINVAL;
@@ -558,20 +511,52 @@ static int parse_args(int argc, char **argv)
     return 0;
 }
 
-void *gpiocontrol()
+void clean_rx_buf(void *rx_buf, size_t rx_buf_size)
 {
-    while (1)
+    memset(rx_buf, 0, rx_buf_size);
+    return;
+}
+
+// 0,1,1000,3000,6000,7000,7831,7832
+long tx_data[7] = {
+    0x123456965472c800,
+    0x0102030400000000,
+    0x01020304000003e7,
+    0x0102030400000bb7,
+    0x010203040000176f,
+    0x0102030400001b57,
+    0x0102030400001e96,
+};
+unsigned int rx_data_index[7] = {0, 1, 1000, 3000, 6000, 7000, 7831};
+
+int check_rx_data(void *data)
+{
+    int flag = 0;
+    long *p = (long *)data;
+
+    // for (int ij = 0; ij < 7; ++ij)
+    // {
+    //     if (*(p + rx_data_index[ij]) != tx_data[ij])
+    //     {
+    //         printf("rx: %016lx, tx:%016lx, ij:%d\n", *(p + rx_data_index[ij]), tx_data[ij], ij);
+    //         return 0;
+    //     }
+    // }
+
+    long tmp = tx_data[1];
+    for (long ik = 1; ik < rx_data_index[6] + 1; ++ik)
     {
-        usleep(USLEEP * 10);
-        if (gpio_ch)
+        if (p[ik] != tmp)
         {
-            pthread_mutex_lock(&gpio_mutex);
-            setdir(EVM_REQ_FLAG, SYSFS_GPIO_DIR_OUT);
-            setvalue(EVM_REQ_FLAG, SYSFS_GPIO_VAL_H);
-            evm_flag = 1;
-            pthread_mutex_unlock(&gpio_mutex);
+            printf("rx: %016lx, ik:%ld\n", p[ik - 1], ik - 1);
+            printf("rx: %016lx, tx:%016lx, ik:%ld\n", p[ik], tmp, ik);
+            printf("rx: %016lx, ik:%ld\n", p[ik + 1], ik + 1);
+            flag++;
         }
+        tmp++;
     }
+
+    return flag;
 }
 
 /*----------------------------------------------------------------------------
@@ -677,7 +662,7 @@ int main(int argc, char **argv)
     m_udpmm2s.tx_size = tx_size;
 
     pthread_t tids;
-    int ret = pthread_create(&tids, NULL, udp_recv, (void *)&m_udpmm2s);
+    int ret = pthread_create(&tids, NULL, mm2s_data_recv, (void *)&m_udpmm2s);
     if (ret != 0)
     {
         printf("pthread_create error: error_code=%d", ret);
@@ -689,29 +674,60 @@ int main(int argc, char **argv)
         fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
     }
 
-    pthread_t gpio_cid;
-    ret = pthread_create(&gpio_cid, NULL, gpiocontrol, NULL);
-    if (ret != 0)
-    {
-        printf("gpio pthread_create error: error_code=%d", ret);
-        goto free_rx_buf;
-    }
-    ret = pthread_detach(gpio_cid);
-    if (ret != 0)
-    {
-        fprintf(stderr, "pthread_detach error:%s\n", strerror(ret));
-    }
-
     axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUF_SIZE, false);
 
     printf("s2mm start\n");
+
+    int rx_wrong_num = 0;
+
+    int tmp_rx_num = 0;
+    int tmp_wrong_num = 0;
+
+    int sleepfrac = 100000;
+    int test_rv_count = 5;
+
     while (1)
     {
         while (rx_wait_flag)
         {
         }
+
         // int ldpcnum = 0;
         // getInfo(rx_buf, &ldpcnum);
+
+        // check speed use
+        int checked = check_rx_data(rx_buf);
+        if (checked)
+        {
+            printf("packet wrong num: %d\n", checked);
+            rx_wrong_num++;
+            // getInfo(rx_buf, &ldpcnum);
+        }
+        if (rxnum % 10 == 0)
+        {
+            // if (rx_wrong_num - tmp_wrong_num == 0)
+            {
+                printf("no wrong section, sleep:%d, sleep frac:%d\n", usleep_time, sleepfrac);
+
+                if (usleep_time <= sleepfrac)
+                {
+                    sleepfrac = sleepfrac / 10;
+                    usleep_time -= sleepfrac;
+                    printf("usleep_time <= sleepfrac, uleep:%d, sleepfrac:%d\n", usleep_time,
+                           sleepfrac);
+                    test_rv_count *= 10;
+                }
+                else
+                {
+                    usleep_time -= sleepfrac;
+                }
+            }
+            tmp_wrong_num = rx_wrong_num;
+            printf("rx num:%d, wrong num:%d, tx num:%d\n", rxnum, rx_wrong_num, txnum);
+        }
+
+        clean_rx_buf(rx_buf, BUF_SIZE);
+
         rx_wait_flag = 1;
         axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, BUF_SIZE, false);
     }
