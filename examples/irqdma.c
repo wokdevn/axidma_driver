@@ -23,7 +23,7 @@
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
-#define TRANS_NUM 165 * 4
+#define TRANS_NUM 401
 #define DATA_WIDTH 64
 #define TRANS_SIZE (int)(TRANS_NUM * DATA_WIDTH / 8 * sizeof(char))
 
@@ -36,15 +36,115 @@
 void rxcall(int channelid, void *p);
 static int init_args(int *rx_channel, size_t *rx_size);
 void cleanbuf(void *buf, int len);
+int init_reg_dev();
+int regdev_read(int reg, int *val);
+int regdev_write(int reg, int val);
+void gw_WriteReg(unsigned int addr, int dat);
+int gw_ReadReg(unsigned int addr);
 
 int rxnum = 0;
 int waitflag = 1;
 int udpflag = 1;
 
+int g_memDev;
+void *map_base_dma;
+void *map_base_apb;
+
+
+int init_reg_dev()
+{
+    g_memDev = open("/dev/mem", O_RDWR | O_SYNC);
+    if (g_memDev < 0)
+    {
+        printf("ERROR: can not open /dev/mem\n");
+        return 0;
+    }
+    map_base_dma = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, g_memDev, 0xA0000000);
+    if (!map_base_dma)
+    {
+        printf("ERROR: unable to mmap adc registers\n");
+        if (g_memDev)
+            close(g_memDev);
+
+        return 0;
+    }
+
+    map_base_apb = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, g_memDev, 0xA0010000);
+    if (!map_base_apb)
+    {
+        printf("ERROR: unable to mmap adc registers\n");
+        if (g_memDev)
+            close(g_memDev);
+
+        return 0;
+    }
+
+    return 0;
+}
+
+int regdev_read(int reg, int *val)
+{
+    int ret = 0;
+    void *virt_addr;
+
+    if (reg > 0xFFFB)
+    { // exceed 64KB
+        ret = -EIO;
+        goto exit;
+    }
+
+    virt_addr = (char *)(map_base_dma) + reg;
+
+    *val = *(volatile uint32_t *)(virt_addr);
+exit:
+    return ret;
+}
+
+int regdev_write(int reg, int val)
+{
+    int ret = 0;
+
+    void *virt_addr;
+
+    if (reg > 0xFFFB)
+    { // exceed 64KB
+        ret = -EIO;
+        goto exit;
+    }
+
+    virt_addr = (char *)(map_base_apb) + reg;
+
+    *(volatile uint32_t *)(virt_addr) = val;
+
+exit:
+    return ret;
+}
+
+void gw_WriteReg(unsigned int addr, int dat)
+{
+    int rc;
+    rc = regdev_write(addr & 0xffff, dat);
+    if (rc != 0)
+    {
+        printf("regdev_write error ! rc = %d \n", rc);
+    }
+}
+
+int gw_ReadReg(unsigned int addr)
+{
+    int value, rc;
+    rc = regdev_read(addr & 0xffff, &value);
+    if (rc != 0)
+    {
+        printf("regdev_read error ! rc = %d \n", rc);
+    }
+    return value;
+}
+
 void rxcall(int channelid, void *p)
 {
     rxnum++;
-    printf("enter rx call, rxnum:%d\n", rxnum);
+    // printf("enter rx call, rxnum:%d\n", rxnum);
 
     if (!udpflag)
     {
@@ -54,20 +154,25 @@ void rxcall(int channelid, void *p)
     }
 
     long *index = (long *)p;
-    printf("0:%016lx    165:%016lx    165*2:%016lx    165*3:%016lx\n", index[0], index[165], index[165 * 2], index[165 * 3]);
-    for (int j = 0; j < 165 * 7; j += 165)
-    {
-        for (int i = j; i < j + 5; ++i)
-        {
-            printf("%04d:%016lx\n", i, index[i]);
-        }
-    }
+    // printf("0:%016lx    165:%016lx    165*2:%016lx    165*3:%016lx\n", index[0], index[165], index[165 * 2], index[165 * 3]);
 
-    udp_send((void*)(index+165 * 3),TRANS_SIZE/4);
+    // for (int j = 0; j < TRANS_NUM; j++)
+    // {
+
+    //     printf("%04d:%016lx\n", j, index[j]);
+    // }
+
+    printf("%04d:%016lx\n", 0, index[0]);
+
+    index[0] = 0x0100;
+
+    printf("%04d:%016lx\n", 0, index[0]);
+
+    udp_send((void*)(index),TRANS_SIZE);
+
     udpflag = 0;
 
     cleanbuf(p, BUF_SIZE);
-    printf("\n\n");
     waitflag = 0;
 }
 
@@ -104,6 +209,7 @@ int main(int argc, char **argv)
     printf("Enter main v6.0 irq axidma test\n");
 
     udp_send_init(LOCAL_PORT, DEST_PORT, DEST_IP);
+    init_reg_dev();
 
     // Check if the user overrided the default transfer size and number
     // just pay attention to size
@@ -148,6 +254,7 @@ int main(int argc, char **argv)
 
     printf("s2mm start\n");
     axidma_oneway_transfer(axidma_dev, rx_channel, rx_buf, rx_size, false);
+    gw_WriteReg(0xA0010004, 0x1);
 
     struct timeval tv_begin_s, tv_end_s, tresult_s;
     gettimeofday(&tv_begin_s, NULL);

@@ -63,7 +63,11 @@
 
 // MB param max
 #define MB_MAX 63
-#define EVM_COUNT 300
+#define EVM_COUNT 330
+
+#define LOCAL_PORT 1234
+#define DEST_PORT 5001
+#define DEST_IP "192.168.0.126"
 
 // decide whether use mm2s test data
 int tr_data_test_flag = 0;
@@ -85,6 +89,8 @@ int param_pattern = 0;
 int pattern_flag = 0;
 
 int usleep_time = 1000000;
+int sleepfrac = 1000;
+int test_rv_count = 5;
 
 // The DMA context passed to the helper thread, who handles remainder channels
 struct udpmm2s
@@ -362,13 +368,25 @@ void getInfo(void *rx_buf, int *lcnum)
             int ct = totalct + 5;
             // int ct = 10;
 
-            while (ct)
+            // while (ct)
+            // {
+            //     printf("s2mm evm data %d: %016lx \n", it, *index_l);
+            //     it++;
+            //     index_l++;
+            //     ct--;
+            // }
+
+            long *udppack = (long *)malloc(sizeof(char) * 1320);
+            memcpy(udppack, index_l + 1, 1320);
+            udppack[0] = 0x0002000100020001;
+
+            for (unsigned i = 0; i < 1320 / sizeof(long); ++i)
             {
-                printf("s2mm evm data %d: %016lx \n", it, *index_l);
-                it++;
-                index_l++;
-                ct--;
+                printf("udp data %d: %016lx \n", i, udppack[i]);
             }
+
+            udp_send((void *)udppack, 1320);
+            free(udppack);
         }
     }
 
@@ -577,6 +595,8 @@ int main(int argc, char **argv)
     export_gpio(EVM_REQ_FLAG);
     export_gpio(RECEIVE_RESET);
 
+    udp_send_init(LOCAL_PORT, DEST_PORT, DEST_IP);
+
     if (parse_args(argc, argv) < 0)
     {
         printf("Wrong param\n");
@@ -683,48 +703,45 @@ int main(int argc, char **argv)
     int tmp_rx_num = 0;
     int tmp_wrong_num = 0;
 
-    int sleepfrac = 100000;
-    int test_rv_count = 5;
-
     while (1)
     {
         while (rx_wait_flag)
         {
         }
 
-        // int ldpcnum = 0;
-        // getInfo(rx_buf, &ldpcnum);
+        int ldpcnum = 0;
+        getInfo(rx_buf, &ldpcnum);
 
-        // check speed use
-        int checked = check_rx_data(rx_buf);
-        if (checked)
-        {
-            printf("packet wrong num: %d\n", checked);
-            rx_wrong_num++;
-            // getInfo(rx_buf, &ldpcnum);
-        }
-        if (rxnum % 10 == 0)
-        {
-            // if (rx_wrong_num - tmp_wrong_num == 0)
-            {
-                printf("no wrong section, sleep:%d, sleep frac:%d\n", usleep_time, sleepfrac);
+        // // check speed use
+        // int checked = check_rx_data(rx_buf);
+        // if (checked)
+        // {
+        //     printf("packet wrong num: %d\n", checked);
+        //     rx_wrong_num++;
+        //     // getInfo(rx_buf, &ldpcnum);
+        // }
+        // if (rxnum % 1000 == 0)
+        // {
+        //     // if (rx_wrong_num - tmp_wrong_num == 0)
+        //     {
+        //         // printf("no wrong section, sleep:%d, sleep frac:%d\n", usleep_time, sleepfrac);
 
-                if (usleep_time <= sleepfrac)
-                {
-                    sleepfrac = sleepfrac / 10;
-                    usleep_time -= sleepfrac;
-                    printf("usleep_time <= sleepfrac, uleep:%d, sleepfrac:%d\n", usleep_time,
-                           sleepfrac);
-                    test_rv_count *= 10;
-                }
-                else
-                {
-                    usleep_time -= sleepfrac;
-                }
-            }
-            tmp_wrong_num = rx_wrong_num;
-            printf("rx num:%d, wrong num:%d, tx num:%d\n", rxnum, rx_wrong_num, txnum);
-        }
+        //         if (usleep_time <= sleepfrac)
+        //         {
+        //             sleepfrac = sleepfrac / 10;
+        //             usleep_time -= sleepfrac;
+        //             printf("usleep_time <= sleepfrac, uleep:%d, sleepfrac:%d\n", usleep_time,
+        //                    sleepfrac);
+        //             test_rv_count *= 10;
+        //         }
+        //         else
+        //         {
+        //             usleep_time -= sleepfrac;
+        //         }
+        //     }
+        //     tmp_wrong_num = rx_wrong_num;
+        //     printf("rx num:%d, wrong num:%d, tx num:%d\n", rxnum, rx_wrong_num, txnum);
+        // }
 
         clean_rx_buf(rx_buf, BUF_SIZE);
 
