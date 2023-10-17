@@ -14,9 +14,6 @@
 #include <signal.h>
 #include <pthread.h>
 
-#define SERVER_PORT 8888
-#define SERVER_IP "192.168.0.27"
-
 // 调用socket函数返回的文件描述符
 int serverSocket;
 int clientSocket;
@@ -29,7 +26,7 @@ struct sockaddr_in clientAddr;
 
 int linkFlag;
 
-int tcpInit();
+int tcpInit(unsigned int server_port, const char* server_ip);
 int tcpLink();
 int sendTcp(void *data, int length);
 int releaseTcp();

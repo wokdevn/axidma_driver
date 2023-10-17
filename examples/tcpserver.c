@@ -46,7 +46,7 @@ void sig_handler(int signo)
     }
 }
 
-int tcpInit()
+int tcpInit(unsigned int server_port, const char* server_ip)
 {
     addr_len = sizeof(clientAddr);
     linkFlag = 0;
@@ -70,9 +70,9 @@ int tcpInit()
 
     // 初始化服务器端的套接字，并用htons和htonl将端口和地址转成网络字节序
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_PORT);
+    server_addr.sin_port = htons(server_port);
     // ip可是是本服务器的ip，也可以用宏INADDR_ANY代替，代表0.0.0.0，表明所有地址
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    server_addr.sin_addr.s_addr = inet_addr(server_ip);
 
     // 对于bind，accept之类的函数，里面套接字参数都是需要强制转换成(struct sockaddr *)
     // bind三个参数：服务器端的套接字的文件描述符，
@@ -91,7 +91,7 @@ int tcpInit()
         return -1;
     }
 
-    printf("listening port: %d\n", SERVER_PORT);
+    printf("listening port: %d\n", server_port);
     return 0;
 }
 
@@ -125,13 +125,7 @@ int tcpLink()
 
 int sendTcp(void *data, int length)
 {
-    int sendrt = send(clientSocket, data, length, 0);
-    if (sendrt != length)
-    {
-        printf("sendrt:%d, length:%d\n", sendrt,length);
-    }
-
-    return 0;
+    return send(clientSocket, data, length, 0);
 }
 
 int releaseTcp()

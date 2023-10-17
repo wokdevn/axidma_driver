@@ -18,8 +18,7 @@
 #include "util.h"       // Miscellaneous utilities
 #include "conversion.h" // Miscellaneous conversion utilities
 
-#include "udpsend.h"
-
+#include "tcpserver.h"
 /*----------------------------------------------------------------------------
  * Internal Definitons
  *----------------------------------------------------------------------------*/
@@ -29,9 +28,14 @@
 
 #define BUF_SIZE TRANS_SIZE * 5
 
-#define LOCAL_PORT 1234
-#define DEST_PORT 5001
-#define DEST_IP "192.168.0.126"
+#define SERVER_PORT 8888
+#define SERVER_IP "192.168.1.43"
+
+typedef struct ippack
+{
+    void *pack;
+    int size;
+} ippack;
 
 void rxcall(int channelid, void *p);
 static int init_args(int *rx_channel, size_t *rx_size);
@@ -41,15 +45,21 @@ int regdev_read(int reg, int *val);
 int regdev_write(int reg, int val);
 void gw_WriteReg(unsigned int addr, int dat);
 int gw_ReadReg(unsigned int addr);
+void mtcpsend(ippack *tcppack);
 
 int rxnum = 0;
 int waitflag = 1;
-int udpflag = 1;
+int tcpflag = 1;
 
 int g_memDev;
 void *map_base_dma;
 void *map_base_apb;
 
+void mtcpsend(ippack *tcppack)
+{
+    sendTcp(tcppack->pack, tcppack->size);
+    // pthread_exit(NULL);
+}
 
 int init_reg_dev()
 {
@@ -146,31 +156,31 @@ void rxcall(int channelid, void *p)
     rxnum++;
     // printf("enter rx call, rxnum:%d\n", rxnum);
 
-    if (!udpflag)
+    if (!tcpflag)
     {
         cleanbuf(p, BUF_SIZE);
         waitflag = 0;
         return;
     }
+    tcpflag = 0;
 
-    long *index = (long *)p;
-    // printf("0:%016lx    165:%016lx    165*2:%016lx    165*3:%016lx\n", index[0], index[165], index[165 * 2], index[165 * 3]);
+    if (linkFlag)
+    {
+        long *index = (long *)p;
+        printf("%04d:%016lx\n", 0, index[0]);
+        index[0] = 0x0100;
+        printf("%04d:%016lx\n", 0, index[0]);
 
-    // for (int j = 0; j < TRANS_NUM; j++)
-    // {
+        ippack tcppk;
+        tcppk.pack = p;
+        tcppk.size = TRANS_SIZE;
 
-    //     printf("%04d:%016lx\n", j, index[j]);
-    // }
-
-    printf("%04d:%016lx\n", 0, index[0]);
-
-    index[0] = 0x0100;
-
-    printf("%04d:%016lx\n", 0, index[0]);
-
-    udp_send((void*)(index),TRANS_SIZE);
-
-    udpflag = 0;
+        mtcpsend(&tcppk);
+    }
+    else
+    {
+        printf("no link\n");
+    }
 
     cleanbuf(p, BUF_SIZE);
     waitflag = 0;
@@ -208,8 +218,16 @@ int main(int argc, char **argv)
 
     printf("Enter main v6.0 irq axidma test\n");
 
-    udp_send_init(LOCAL_PORT, DEST_PORT, DEST_IP);
+    tcpInit(SERVER_PORT, SERVER_IP);
     init_reg_dev();
+
+    pthread_t tcpTids;
+    int ret = pthread_create(&tcpTids, NULL, (void *)tcpLink, NULL);
+    if (ret != 0)
+    {
+        printf("tcp link pthread_create error: error_code=%d", ret);
+        goto free_rx_buf;
+    }
 
     // Check if the user overrided the default transfer size and number
     // just pay attention to size
@@ -270,11 +288,11 @@ int main(int argc, char **argv)
         gettimeofday(&tv_end_s, NULL);
         timersub(&tv_end_s, &tv_begin_s, &tresult_s);
         timeuse_ms_s = tresult_s.tv_sec * 1000 + (1.0 * tresult_s.tv_usec) / 1000; //  精确到毫秒
-        if (timeuse_ms_s > 100)
+        if (timeuse_ms_s > 300)
         {
-            if (!udpflag)
+            if (!tcpflag)
             {
-                udpflag = 1;
+                tcpflag = 1;
             }
             gettimeofday(&tv_begin_s, NULL);
         }
@@ -288,5 +306,6 @@ free_rx_buf:
     axidma_free(axidma_dev, rx_buf, rx_size);
     axidma_destroy(axidma_dev);
 ret:
+    releaseTcp();
     return rc;
 }
