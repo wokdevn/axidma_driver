@@ -67,6 +67,10 @@ int resetFlag = 0;
 int packetflag = 0;
 int udp_blank_ctrl = 1;
 
+#define LOCAL_PORT 1234
+#define DEST_PORT 5001
+#define DEST_IP "192.168.0.126"
+
 /*----------------------------------------------------------------------------
  * Function
  *----------------------------------------------------------------------------*/
@@ -417,7 +421,7 @@ int main(int argc, char **argv)
     printf("\tTRANS_SIZE:%d \n", TRANS_SIZE);
     printf("\tReceive Buffer Size: %ld MByte\n", BYTE_TO_MIB(rx_size));
 
-    udp_init();
+    udp_send_init(LOCAL_PORT,DEST_PORT,DEST_IP);
 
     // Initialize the AXI DMA device
     axidma_dev = axidma_init();
@@ -524,6 +528,6 @@ free_rx_buf:
     axidma_free(axidma_dev, rx_buf, rx_size);
     axidma_destroy(axidma_dev);
 ret:
-    udp_release();
+    udp_send_release();
     return rc;
 }

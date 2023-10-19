@@ -40,7 +40,7 @@ int udp_send(void *buf, int size)
     return 0;
 }
 
-int udp_release()
+int udp_send_release()
 {
     close(sock_fd);
     return 0;

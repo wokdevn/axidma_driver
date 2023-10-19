@@ -21,7 +21,6 @@
 #include "udpsend.h"
 #include "interdma.h"
 #include "util_interdma.h"
-#include "mgpio.h"
 
 /*----------------------------------------------------------------------------
  * Internal Definitons
@@ -590,10 +589,6 @@ int main(int argc, char **argv)
     const array_t *tx_chans, *rx_chans;
 
     printf("Enter main v5.0 two devices connect\n");
-
-    // gpio433 export
-    export_gpio(EVM_REQ_FLAG);
-    export_gpio(RECEIVE_RESET);
 
     udp_send_init(LOCAL_PORT, DEST_PORT, DEST_IP);
 
